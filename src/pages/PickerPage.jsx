@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import SessionCard from '../components/picker/SessionCard.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import ConnectSessionsModal from '../components/picker/ConnectSessionsModal.jsx';
+import WebkitDirectoryFallback from '../components/picker/WebkitDirectoryFallback.jsx';
 import {
   getSavedSessionsDirectory,
   pickAndSaveSessionsDirectory,
+  supportsFileSystemAccess,
 } from '../lib/fsAccess.ts';
 import {
   loadSessionsCache,
@@ -145,13 +147,29 @@ export default function PickerPage() {
       setError(null);
       setStatus('refreshing');
 
-      const handle = await pickAndSaveSessionsDirectory();
-      await refreshFromHandle(handle);
+      // Check if browser supports File System Access API
+      if (supportsFileSystemAccess()) {
+        const handle = await pickAndSaveSessionsDirectory();
+        await refreshFromHandle(handle);
+      } else {
+        // For Firefox/Safari: Show file input with webkitdirectory
+        // This will be handled by triggering the WebkitDirectoryFallback component
+        setStatus('needs-connect');
+        setError('Use the "Import folder" option below for your browser.');
+      }
     } catch (err) {
       console.error('Connect failed:', err);
       setError(friendlyPickerError(err));
       setStatus('needs-connect');
     }
+  }
+
+  async function handleFallbackCache(fallbackCache) {
+    // Convert fallback cache format to our project structure
+    await saveSessionsCache(fallbackCache);
+    setCache(fallbackCache);
+    setProjects(fallbackCache.projects || []);
+    setStatus('connected');
   }
 
   async function refresh() {
@@ -241,11 +259,27 @@ export default function PickerPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
 
       <ConnectSessionsModal
-        open={status === 'needs-connect'}
+        open={status === 'needs-connect' && supportsFileSystemAccess()}
         busy={busy}
         error={error}
         onConnect={connect}
       />
+
+      {/* Fallback import for Firefox/Safari */}
+      {status === 'needs-connect' && !supportsFileSystemAccess() && (
+        <div style={{
+          position: 'fixed',
+          inset: 0,
+          display: 'grid',
+          placeItems: 'center',
+          padding: '1rem',
+          background: 'rgba(10, 15, 25, 0.75)',
+          zIndex: 1000,
+          backdropFilter: 'blur(4px)',
+        }}>
+          <WebkitDirectoryFallback onCache={handleFallbackCache} />
+        </div>
+      )}
 
       {/* Header bar */}
       <div style={{

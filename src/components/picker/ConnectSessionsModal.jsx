@@ -105,15 +105,17 @@ export default function ConnectSessionsModal({
           <div
             style={{
               padding: '12px',
-              background: 'rgba(255, 180, 0, 0.1)',
-              border: '1px solid rgba(255, 180, 0, 0.3)',
+              background: 'rgba(88, 166, 255, 0.1)',
+              border: '1px solid rgba(88, 166, 255, 0.3)',
               borderRadius: '8px',
               marginBottom: '16px',
             }}
           >
-            <span style={{ fontSize: '13px', color: 'var(--text-primary)' }}>
-              Your browser does not support <code style={{ fontFamily: 'var(--font-mono)' }}>showDirectoryPicker()</code>.
-              Use a Chromium-based browser (Chrome, Edge, Brave) for the best experience.
+            <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
+              Firefox/Safari user?
+            </strong>
+            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+              Your browser uses a fallback mode. You'll need to re-select your folder after page refresh, but all features work normally.
             </span>
           </div>
         )}
@@ -136,20 +138,20 @@ export default function ConnectSessionsModal({
 
         <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
           <button
-            disabled={!supported || busy}
+            disabled={busy}
             onClick={onConnect}
             style={{
               padding: '10px 20px',
               fontSize: '14px',
               fontWeight: 600,
-              cursor: supported && !busy ? 'pointer' : 'not-allowed',
+              cursor: busy ? 'not-allowed' : 'pointer',
               borderRadius: '8px',
-              background: supported && !busy ? 'var(--accent)' : 'var(--bg-3)',
+              background: busy ? 'var(--bg-3)' : 'var(--accent)',
               border: 'none',
-              color: supported && !busy ? 'white' : 'var(--text-muted)',
+              color: busy ? 'var(--text-muted)' : 'white',
             }}
           >
-            {busy ? 'Connecting...' : 'Select .claude folder'}
+            {busy ? 'Loading...' : (supported ? 'Select .claude folder' : 'Import .claude folder')}
           </button>
         </div>
       </section>
