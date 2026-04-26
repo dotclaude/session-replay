@@ -6,11 +6,11 @@ Icon proposal showcase for the **Claude Session Replay & Animation Export Toolki
 
 | # | Name | Concept |
 |---|------|---------|
-| 1 | **Replay Loop** | A 315° clockwise arc with an arrowhead encircles a play triangle — immediately communicates looped session replay. |
-| 2 | **Event Capture** | A dashed capture frame with a mouse cursor and a pulsing recording dot — highlights the browser-session capture phase. |
-| 3 | **Animation Timeline** | Diamond keyframes on a horizontal track with a scrubbing playhead needle — the visual language of every animation editor. |
-| 4 | **Film Export** | A film strip with sprocket holes paired with an upward export arrow — unites animation and file-export in one mark. |
-| 5 | **Spark Mark** | An outer boundary ring frames an inner replay arc and play triangle — an abstract brand logomark suited for app icons and favicons. |
+| 1 | **Browser Play** | A browser chrome bar with traffic-light dots frames a content area centred on a play button — the most direct expression of replaying a browser session. |
+| 2 | **Cursor Ghost** | A sharp pointer arrow leaves two progressively faded ghost copies in its wake — immediately evokes replaying recorded mouse movements. |
+| 3 | **Cel Stack** | Three animation cels fanned diagonally (back-to-front) with a play arrow in the front cel and a scrubber track below — the language of frame-by-frame playback. |
+| 4 | **Cassette Reel** | A cassette body with two reel hubs and an exposed tape window — a universal symbol for rewinding and replaying that transcends the digital era. |
+| 5 | **Viewfinder** | Corner-bracket framing, a crosshair reticle, and a recording dot create a camera viewfinder — signalling the watch-and-record dual nature of the toolkit. |
 
 ## Stack
 
