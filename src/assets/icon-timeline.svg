@@ -1,19 +1,23 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
   <!--
-    Option 3 – Animation Timeline
-    Horizontal track with three diamond keyframes; a vertical scrub-head
-    needle with a downward-pointing handle sits at the current position.
-    Borrows the visual language of every animation/video editor.
+    Option 3 – Cel Stack
+    Three animation cels fanned diagonally (back-to-front) with a play arrow
+    in the foreground cel and a scrubber track below — the language of
+    frame-by-frame animation playback.
   -->
-  <!-- Track -->
-  <line x1="4" y1="32" x2="44" y2="32" stroke="#4c1d95" stroke-width="3" stroke-linecap="round"/>
-  <!-- Keyframe diamonds (filled) -->
-  <path d="M12 32 L15 28 L18 32 L15 36 Z" fill="#7c3aed"/>
-  <path d="M22 32 L25 28 L28 32 L25 36 Z" fill="#7c3aed"/>
-  <!-- Third keyframe – slightly dimmed to suggest future/unvisited -->
-  <path d="M32 32 L35 28 L38 32 L35 36 Z" fill="#7c3aed" opacity="0.4"/>
-  <!-- Playhead needle -->
-  <line x1="25" y1="14" x2="25" y2="44" stroke="#38bdf8" stroke-width="2.5" stroke-linecap="round"/>
-  <!-- Playhead handle (downward triangle at top) -->
-  <polygon points="20,14 25,21 30,14" fill="#38bdf8"/>
+  <!-- Back frame (faintest) -->
+  <rect x="16" y="5" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2" stroke-opacity="0.3"/>
+  <!-- Middle frame -->
+  <rect x="10" y="11" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2" stroke-opacity="0.6"/>
+  <!-- Front frame (full opacity) -->
+  <rect x="4" y="17" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2.5"/>
+  <!-- Play arrow inside front frame -->
+  <polygon points="12,23 12,33 24,28" fill="#a78bfa"/>
+  <!-- Scrub track -->
+  <line x1="4" y1="45" x2="44" y2="45" stroke="#4c1d95" stroke-width="2" stroke-linecap="round"/>
+  <!-- Playhead position dot -->
+  <circle cx="18" cy="45" r="3.5" fill="#7c3aed"/>
 </svg>

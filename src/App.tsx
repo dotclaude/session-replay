@@ -8,43 +8,43 @@ import sparkIcon   from './assets/icon-spark.svg'
 const proposals = [
   {
     id: 1,
-    name: 'Replay Loop',
+    name: 'Browser Play',
     icon: replayIcon,
-    alt: 'Circular clockwise arrow wrapping a play triangle',
+    alt: 'Browser window with traffic-light dots and a play button in the viewport',
     description:
-      'A 315° arc with an arrowhead encircles a forward-play triangle — instantly communicates looped session playback.',
+      'A browser chrome bar (with red/yellow/green traffic-light dots) frames a content area centred on a play button — the most direct expression of replaying a browser session.',
   },
   {
     id: 2,
-    name: 'Event Capture',
+    name: 'Cursor Ghost',
     icon: captureIcon,
-    alt: 'Dashed capture frame with cursor and recording dot',
+    alt: 'Mouse cursor arrow with two progressively faded ghost copies trailing behind it',
     description:
-      'A dashed capture frame surrounds a mouse cursor; a pulsing dot signals live recording — emphasises the browser-session capture phase.',
+      'A sharp pointer arrow leaves two fading ghost copies in its wake — immediately evokes the replay of recorded mouse movements and user interactions.',
   },
   {
     id: 3,
-    name: 'Animation Timeline',
+    name: 'Cel Stack',
     icon: timelineIcon,
-    alt: 'Horizontal track with diamond keyframes and a playhead needle',
+    alt: 'Three offset animation frames stacked diagonally with a play arrow and scrubber',
     description:
-      'Diamond keyframes sit on a horizontal track with a scrubbing playhead — the visual language of every animation and video editor.',
+      'Three animation cels fanned diagonally — back to front — with a play arrow in the foreground cel and a scrubber dot below. The language of frame-by-frame playback.',
   },
   {
     id: 4,
-    name: 'Film Export',
+    name: 'Cassette Reel',
     icon: exportIcon,
-    alt: 'Film strip with sprocket holes and an upward export arrow',
+    alt: 'Cassette tape body with two hub circles and a tape exposure window',
     description:
-      'A film strip with perforation holes paired with an upward export arrow — unites the animation and file-export concepts in one mark.',
+      'A cassette body with two reel hubs and an exposed tape window — a universal symbol for rewinding and replaying that transcends the digital era.',
   },
   {
     id: 5,
-    name: 'Spark Mark',
+    name: 'Viewfinder',
     icon: sparkIcon,
-    alt: 'Bold outer circle framing an inner replay arc and play triangle',
+    alt: 'Camera viewfinder circle with corner brackets, crosshair reticle, and recording dot',
     description:
-      'An outer boundary ring frames an inner replay arc and play triangle — an abstract, brand-logomark-style icon suited for app icons and favicons.',
+      'Corner-bracket framing, a crosshair reticle, and a recording dot create a camera viewfinder — signalling the watch-and-record dual nature of the toolkit.',
   },
 ]
 
