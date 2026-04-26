@@ -21,7 +21,7 @@ const KIND_COLORS = {
   'tool-bash':        '#39d353',
   'tool-write':       '#58a6ff',
   'tool-edit':        '#d29922',
-  'tool-read':        '#484f58',
+  'tool-read':        '#6e7681',  // Updated for WCAG compliance
   'tool-agent':       '#ffa657',
   'tool-web':         '#bc8cff',
   'hook-event':       '#d29922',
@@ -62,7 +62,7 @@ function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
       >
         {steps.map((s, i) => (
           <rect key={i} x={i} y={0} width={1} height={1}
-            fill={KIND_COLORS[s.kind] || '#30363d'}
+            fill={KIND_COLORS[s.kind] || '#444c56'}
             opacity={(clipIn != null && clipOut != null) ? (i >= clipIn && i <= clipOut ? 1 : 0.3) : 1}
           />
         ))}

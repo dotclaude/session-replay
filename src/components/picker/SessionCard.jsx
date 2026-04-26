@@ -22,9 +22,25 @@ export default function SessionCard({ session, onClick }) {
     .slice(0, 4);
   const isSubAgent = session.isSubAgent;
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
+  const title = session.title || session.id.slice(0, 16) + '…';
+  const label = isSubAgent
+    ? `Sub-agent session: ${title}, ${session.turnCount || 0} turns`
+    : `Session: ${title}, ${session.turnCount || 0} turns`;
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
+      aria-label={label}
       style={{
         padding: 14,
         background: 'var(--bg-1)',

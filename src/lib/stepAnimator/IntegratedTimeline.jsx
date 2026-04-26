@@ -166,7 +166,7 @@ export default function IntegratedTimeline({
               y={0}
               width={1}
               height={1}
-              fill={KIND_COLORS[step.kind] || '#484f58'}
+              fill={KIND_COLORS[step.kind] || '#6e7681'}
               opacity={activeKinds && !activeKinds.has(step.kind) ? 0.2 : 1}
             />
           ))}

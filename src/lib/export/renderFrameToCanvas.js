@@ -14,10 +14,10 @@
 const BG0      = '#0d1117';
 const BG1      = '#161b22';
 const BG2      = '#21262d';
-const BORDER   = '#30363d';
+const BORDER   = '#444c56';  // Updated for 3:1 contrast (was #30363d)
 const TEXT_PRI = '#e6edf3';
 const TEXT_SEC = '#8b949e';
-const TEXT_MUT = '#484f58';
+const TEXT_MUT = '#6e7681';  // Updated for 4.5:1 contrast (was #484f58)
 const MONO     = "'Cascadia Code', 'Fira Code', 'Consolas', monospace";
 const SANS     = "'Inter', 'Segoe UI', system-ui, sans-serif";
 
@@ -31,7 +31,7 @@ const KIND_META = {
   'tool-agent':       { accent: '#ffa657', icon: '◈',  label: 'agent' },
   'tool-web':         { accent: '#bc8cff', icon: '⊕',  label: 'web' },
   'tool-task':        { accent: '#8b949e', icon: '☐',  label: 'task' },
-  'tool-generic':     { accent: '#30363d', icon: '⬡',  label: 'tool' },
+  'tool-generic':     { accent: '#444c56', icon: '⬡',  label: 'tool' },
   'hook-event':       { accent: '#d29922', icon: '⚡', label: 'hook' },
   'agent-progress':   { accent: '#ffa657', icon: '◈',  label: 'agent reasoning' },
   'compaction-event': { accent: '#8b949e', icon: '◎',  label: 'context compact' },

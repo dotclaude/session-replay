@@ -22,7 +22,7 @@ const FILTER_GROUPS = [
   { kind: 'local-command',    label: 'Commands', color: '#bc8cff' },
   { kind: 'hook-event',       label: 'Hooks',    color: '#d29922' },
   { kind: 'agent-progress',   label: 'Reasoning',color: '#ffa657' },
-  { kind: 'compaction-event', label: 'Compact',  color: '#484f58' },
+  { kind: 'compaction-event', label: 'Compact',  color: '#8b949e' },
   { kind: 'error-event',      label: 'Errors',   color: '#f85149' },
   { kind: 'turn-summary',     label: 'Summary',  color: '#3fb950' },
   { kind: 'pr-link',          label: 'PRs',      color: '#bc8cff' },

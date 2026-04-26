@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SessionCard from '../components/picker/SessionCard.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -18,11 +19,23 @@ function timeAgo(ts) {
 function ProjectRow({ project, selected, onClick }) {
   const [hovered, setHovered] = useState(false);
 
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
     <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={handleKeyDown}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      aria-label={`Project ${project.label}, ${project.sessionCount} sessions`}
+      aria-pressed={selected}
       style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '7px 14px',
@@ -123,10 +136,30 @@ export default function PickerPage() {
   const subAgentCount = sessions.filter(s => s.isSubAgent).length;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
 
-      {/* Left sidebar */}
+      {/* Header bar */}
       <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '8px 16px',
+        background: 'var(--bg-1)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 16 }}>⏱</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+            Session Replay
+          </span>
+        </div>
+        <ThemeToggle />
+      </div>
+
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* Left sidebar */}
+        <div style={{
         width: 260, flexShrink: 0,
         borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column',
@@ -184,10 +217,10 @@ export default function PickerPage() {
             </div>
           )}
         </div>
-      </div>
+        </div>
 
-      {/* Right: session list */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        {/* Right: session list */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {!selectedProject ? (
           <div style={{
             flex: 1, display: 'flex', flexDirection: 'column',
@@ -263,6 +296,7 @@ export default function PickerPage() {
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

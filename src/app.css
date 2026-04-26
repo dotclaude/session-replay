@@ -1,5 +1,6 @@
 /* ---- tokens ---- */
-:root {
+/* Dark theme (default) - WCAG 2.1 AA compliant */
+:root, [data-theme="dark"] {
   --bg-0: #0d1117;
   --bg-1: #161b22;
   --bg-2: #21262d;
@@ -19,6 +20,26 @@
   --radius: 8px;
   --radius-sm: 4px;
   --font-mono: 'Consolas', 'SF Mono', 'Fira Code', 'Menlo', monospace;
+}
+
+/* Light theme - WCAG 2.1 AA compliant */
+[data-theme="light"] {
+  --bg-0: #ffffff;
+  --bg-1: #f6f8fa;
+  --bg-2: #eaeef2;
+  --bg-3: #d0d7de;
+  --border: #8c959f;        /* 3:1 contrast on light bg */
+  --text-primary: #1f2328;
+  --text-secondary: #59636e;
+  --text-muted: #6e7781;    /* 4.5:1 contrast */
+  --accent: #0969da;
+  --accent-dim: #218bff;
+  --green: #1a7f37;
+  --yellow: #9a6700;
+  --red: #d1242f;
+  --purple: #8250df;
+  --orange: #bc4c00;
+  --cyan: #1a7f37;
 }
 
 /* ---- layout ---- */
