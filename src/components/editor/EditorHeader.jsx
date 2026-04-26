@@ -1,5 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import ThemeToggle from '../ThemeToggle.jsx';
 
 export default function EditorHeader({ sessionId, mode, onModeChange, onExport, activeTool, onToolChange }) {
   const navigate = useNavigate();
@@ -109,6 +110,8 @@ export default function EditorHeader({ sessionId, mode, onModeChange, onExport, 
         >
           ↑ Export
         </button>
+
+        <ThemeToggle />
       </div>
     </div>
   );

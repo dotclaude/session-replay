@@ -6,6 +6,7 @@ import { buildFramePlan } from '../lib/export/buildFramePlan.js';
 import { captureFrames } from '../lib/export/captureFrames.js';
 import { encodeGif, encodeMp4, encodeWebm } from '../lib/export/encodeVideo.js';
 import StageRenderer from '../components/stages/StageRenderer.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -255,6 +256,7 @@ export default function ExportEditorPage() {
           <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{sessionId.slice(0, 16)}</div>
         </div>
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>{totalSteps} steps</div>
+        <ThemeToggle />
       </div>
 
       {/* Body */}

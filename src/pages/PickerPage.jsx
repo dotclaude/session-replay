@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SessionCard from '../components/picker/SessionCard.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
@@ -84,6 +84,8 @@ export default function PickerPage() {
   const [sortBy, setSortBy] = useState('recent');
   const [showSubAgents, setShowSubAgents] = useState(false);
 
+  const firstSessionRef = useRef(null);
+
   useEffect(() => {
     fetch('/api/projects')
       .then(r => r.json())
@@ -101,7 +103,16 @@ export default function PickerPage() {
     setSessionSearch('');
     fetch(`/api/projects/${encodeURIComponent(selectedProject.id)}/sessions`)
       .then(r => r.json())
-      .then(data => { setSessions(data); setLoadingSessions(false); })
+      .then(data => {
+        setSessions(data);
+        setLoadingSessions(false);
+        // Focus first session after project selection
+        setTimeout(() => {
+          if (firstSessionRef.current) {
+            firstSessionRef.current.focus();
+          }
+        }, 100);
+      })
       .catch(() => setLoadingSessions(false));
   }, [selectedProject]);
 
@@ -285,8 +296,13 @@ export default function PickerPage() {
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {loadingSessions && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading sessions…</div>}
-              {filteredSessions.map(s => (
-                <SessionCard key={s.id} session={s} onClick={() => navigate(`/replay/${s.id}`)} />
+              {filteredSessions.map((s, idx) => (
+                <SessionCard
+                  key={s.id}
+                  session={s}
+                  onClick={() => navigate(`/replay/${s.id}`)}
+                  ref={idx === 0 ? firstSessionRef : null}
+                />
               ))}
               {!loadingSessions && filteredSessions.length === 0 && (
                 <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>

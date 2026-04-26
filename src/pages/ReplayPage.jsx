@@ -12,6 +12,7 @@ import FilterBar, { ALL_KINDS } from '../components/replay/FilterBar.jsx';
 import StatsPanel from '../components/replay/StatsPanel.jsx';
 import SessionClock from '../components/replay/SessionClock.jsx';
 import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
+import ThemeToggle from '../components/ThemeToggle.jsx';
 import { getProcessingMessage } from '../lib/utils/processingMessages.js';
 
 export default function ReplayPage() {
@@ -38,6 +39,7 @@ export default function ReplayPage() {
   const stepsRef = useRef([]);
   const historyRef = useRef(null);
   const stageRef = useRef(null);
+  const playButtonRef = useRef(null);
 
   useEffect(() => {
     setLoading(true);
@@ -89,8 +91,14 @@ export default function ReplayPage() {
   useEffect(() => {
     if (!loading && stepsRef.current.length > 0) {
       executeStep(stepsRef.current[0]);
+      // Focus play button for keyboard navigation
+      setTimeout(() => {
+        if (playButtonRef.current) {
+          playButtonRef.current.focus();
+        }
+      }, 100);
     }
-  }, [loading]);
+  }, [loading, executeStep]);
 
   // Auto-scroll history to bottom
   useEffect(() => {
@@ -207,6 +215,9 @@ export default function ReplayPage() {
           Stats
         </button>
 
+        {/* Theme toggle */}
+        <ThemeToggle />
+
         {/* Width control */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }} title="Content width">
@@ -290,8 +301,11 @@ export default function ReplayPage() {
               }}>
                 ▶
               </div>
-              <div style={{ fontSize: 13 }}>
-                Press Play or scroll on the minimap to begin replay
+              <div style={{ fontSize: 13, textAlign: 'center' }}>
+                <div>Click Play or use keyboard shortcuts to begin replay</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+                  Space: Play/Pause · ← →: Step · Home/End: Jump · Scroll: Scrub
+                </div>
               </div>
             </div>
           )}
@@ -326,6 +340,7 @@ export default function ReplayPage() {
 
       {/* Controls bar with integrated timeline */}
       <AnimatorControls
+        ref={playButtonRef}
         {...animator}
         steps={stepsRef.current}
         activeKinds={activeKinds}

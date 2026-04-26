@@ -1,7 +1,7 @@
 import React from 'react';
 import IntegratedTimeline from './IntegratedTimeline.jsx';
 
-export function AnimatorControls({
+export const AnimatorControls = React.forwardRef(({
   currentStep, totalSteps, isPlaying,
   playbackSpeed, animationDuration, currentDescription,
   play, pause, reset, scrubTo, setPlaybackSpeed, setAnimationDuration,
@@ -13,7 +13,7 @@ export function AnimatorControls({
   activeKinds,
   clipIn,
   clipOut,
-}) {
+}, playButtonRef) => {
   const atEnd = currentStep >= totalSteps - 1;
   return (
     <div className={className} data-animator-controls>
@@ -22,7 +22,7 @@ export function AnimatorControls({
         <button data-animator-reset onClick={reset}>Reset</button>
         {isPlaying
           ? <button data-animator-pause onClick={pause}>Pause</button>
-          : <button data-animator-play onClick={play} disabled={atEnd}>Play</button>
+          : <button ref={playButtonRef} data-animator-play onClick={play} disabled={atEnd}>Play</button>
         }
       </div>
 
@@ -59,4 +59,6 @@ export function AnimatorControls({
       )}
     </div>
   );
-}
+});
+
+AnimatorControls.displayName = 'AnimatorControls';

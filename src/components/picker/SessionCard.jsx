@@ -15,7 +15,7 @@ function formatTokens(n) {
   return String(n);
 }
 
-export default function SessionCard({ session, onClick }) {
+const SessionCard = React.forwardRef(({ session, onClick }, ref) => {
   const duration = formatDuration(session.firstTs, session.lastTs);
   const topTools = Object.entries(session.toolCounts || {})
     .sort((a, b) => b[1] - a[1])
@@ -36,6 +36,7 @@ export default function SessionCard({ session, onClick }) {
 
   return (
     <div
+      ref={ref}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -112,4 +113,8 @@ export default function SessionCard({ session, onClick }) {
       )}
     </div>
   );
-}
+});
+
+SessionCard.displayName = 'SessionCard';
+
+export default SessionCard;
