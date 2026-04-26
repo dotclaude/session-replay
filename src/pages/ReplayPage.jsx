@@ -215,9 +215,6 @@ export default function ReplayPage() {
           Stats
         </button>
 
-        {/* Theme toggle */}
-        <ThemeToggle />
-
         {/* Width control */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
           <span style={{ fontSize: 10, color: 'var(--text-muted)' }} title="Content width">
@@ -241,6 +238,9 @@ export default function ReplayPage() {
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-secondary)', flexShrink: 0 }}>
           {animator.totalSteps} steps
         </div>
+
+        {/* Theme toggle - rightmost */}
+        <ThemeToggle />
       </div>
 
       {/* Filter bar */}
