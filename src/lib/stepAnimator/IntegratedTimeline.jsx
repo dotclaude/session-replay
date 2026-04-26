@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
-import { KIND_COLORS } from '../editor/kindColors.js';
+import { kindColor } from '../editor/kindColors.js';
+import { useTheme } from '../../hooks/useTheme.js';
 
 export default function IntegratedTimeline({
   steps,
@@ -11,6 +12,7 @@ export default function IntegratedTimeline({
   clipOut,
   currentDescription,
 }) {
+  const theme = useTheme(); // Force re-render on theme change
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
@@ -166,7 +168,7 @@ export default function IntegratedTimeline({
               y={0}
               width={1}
               height={1}
-              fill={KIND_COLORS[step.kind] || '#6e7681'}
+              fill={kindColor(step.kind)}
               opacity={activeKinds && !activeKinds.has(step.kind) ? 0.2 : 1}
             />
           ))}

@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { kindColor } from '../../lib/editor/kindColors.js';
+import { useTheme } from '../../hooks/useTheme.js';
 
 function msToPixel(ms, containerWidth, visibleMs, scrollMs) {
   return ((ms - scrollMs) / visibleMs) * containerWidth;
@@ -14,6 +15,7 @@ export default function TimelineClip({
   onSelect,
   dispatch,
 }) {
+  const theme = useTheme(); // Force re-render on theme change
   const dragOffsetRef = useRef(0);
   const [dragPreviewStartMs, setDragPreviewStartMs] = useState(null);
   const [resizePreviewDurationMs, setResizePreviewDurationMs] = useState(null);

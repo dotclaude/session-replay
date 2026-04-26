@@ -1,5 +1,6 @@
 import React from 'react';
 import { kindColor } from '../../lib/editor/kindColors.js';
+import { useTheme } from '../../hooks/useTheme.js';
 
 const Section = ({ title, children }) => (
   <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
@@ -24,6 +25,7 @@ const Val = ({ children, color }) => (
 );
 
 export default function EditorProperties({ composition, dispatch }) {
+  const theme = useTheme(); // Force re-render on theme change
   const { selectedClipId, selectedAnnotationId, clips, annotations } = composition;
 
   const clip = selectedClipId ? clips.find(c => c.id === selectedClipId) : null;

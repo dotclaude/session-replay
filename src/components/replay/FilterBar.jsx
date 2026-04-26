@@ -1,4 +1,6 @@
 import React from 'react';
+import { kindColor } from '../../lib/editor/kindColors.js';
+import { useTheme } from '../../hooks/useTheme.js';
 
 export const ALL_KINDS = [
   'session-header', 'human', 'assistant-text',
@@ -9,26 +11,27 @@ export const ALL_KINDS = [
 ];
 
 const FILTER_GROUPS = [
-  { kind: 'human',            label: 'Human',    color: '#58a6ff' },
-  { kind: 'assistant-text',   label: 'Claude',   color: '#3fb950' },
-  { kind: 'tool-bash',        label: 'Bash',     color: '#39d353' },
-  { kind: 'tool-write',       label: 'Write',    color: '#58a6ff' },
-  { kind: 'tool-edit',        label: 'Edit',     color: '#d29922' },
-  { kind: 'tool-read',        label: 'Read',     color: '#8b949e' },
-  { kind: 'tool-agent',       label: 'Agent',    color: '#ffa657' },
-  { kind: 'tool-skill',       label: 'Skills',   color: '#bc8cff' },
-  { kind: 'tool-web',         label: 'Web',      color: '#bc8cff' },
-  { kind: 'tool-task',        label: 'Tasks',    color: '#8b949e' },
-  { kind: 'local-command',    label: 'Commands', color: '#bc8cff' },
-  { kind: 'hook-event',       label: 'Hooks',    color: '#d29922' },
-  { kind: 'agent-progress',   label: 'Reasoning',color: '#ffa657' },
-  { kind: 'compaction-event', label: 'Compact',  color: '#8b949e' },
-  { kind: 'error-event',      label: 'Errors',   color: '#f85149' },
-  { kind: 'turn-summary',     label: 'Summary',  color: '#3fb950' },
-  { kind: 'pr-link',          label: 'PRs',      color: '#bc8cff' },
+  { kind: 'human',            label: 'Human' },
+  { kind: 'assistant-text',   label: 'Claude' },
+  { kind: 'tool-bash',        label: 'Bash' },
+  { kind: 'tool-write',       label: 'Write' },
+  { kind: 'tool-edit',        label: 'Edit' },
+  { kind: 'tool-read',        label: 'Read' },
+  { kind: 'tool-agent',       label: 'Agent' },
+  { kind: 'tool-skill',       label: 'Skills' },
+  { kind: 'tool-web',         label: 'Web' },
+  { kind: 'tool-task',        label: 'Tasks' },
+  { kind: 'local-command',    label: 'Commands' },
+  { kind: 'hook-event',       label: 'Hooks' },
+  { kind: 'agent-progress',   label: 'Reasoning' },
+  { kind: 'compaction-event', label: 'Compact' },
+  { kind: 'error-event',      label: 'Errors' },
+  { kind: 'turn-summary',     label: 'Summary' },
+  { kind: 'pr-link',          label: 'PRs' },
 ];
 
 export default function FilterBar({ activeKinds, onChange, currentTurnOnly, onCurrentTurnOnly }) {
+  const theme = useTheme(); // Force re-render on theme change
   function toggle(kind) {
     const next = new Set(activeKinds);
     if (next.has(kind)) next.delete(kind); else next.add(kind);
@@ -53,8 +56,9 @@ export default function FilterBar({ activeKinds, onChange, currentTurnOnly, onCu
         None
       </button>
 
-      {FILTER_GROUPS.map(({ kind, label, color }) => {
+      {FILTER_GROUPS.map(({ kind, label }) => {
         const active = activeKinds.has(kind);
+        const color = kindColor(kind);
         return (
           <button key={kind} onClick={() => toggle(kind)}
             style={{

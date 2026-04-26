@@ -7,6 +7,8 @@ import { captureFrames } from '../lib/export/captureFrames.js';
 import { encodeGif, encodeMp4, encodeWebm } from '../lib/export/encodeVideo.js';
 import StageRenderer from '../components/stages/StageRenderer.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import { kindColor } from '../lib/editor/kindColors.js';
+import { useTheme } from '../hooks/useTheme.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -16,26 +18,12 @@ function fmt(ms) {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-const KIND_COLORS = {
-  'human':            '#58a6ff',
-  'assistant-text':   '#3fb950',
-  'tool-bash':        '#39d353',
-  'tool-write':       '#58a6ff',
-  'tool-edit':        '#d29922',
-  'tool-read':        '#6e7681',  // Updated for WCAG compliance
-  'tool-agent':       '#ffa657',
-  'tool-web':         '#bc8cff',
-  'hook-event':       '#d29922',
-  'agent-progress':   '#ffa657',
-  'compaction-event': '#8b949e',
-  'error-event':      '#f85149',
-  'turn-summary':     '#3fb950',
-  'pr-link':          '#bc8cff',
-};
+// Removed KIND_COLORS - now using kindColor() function for theme-aware colors
 
 // ─── Timeline ─────────────────────────────────────────────────────────────────
 
 function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
+  const theme = useTheme(); // Force re-render on theme change
   const svgRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const total = steps.length;
@@ -63,7 +51,7 @@ function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
       >
         {steps.map((s, i) => (
           <rect key={i} x={i} y={0} width={1} height={1}
-            fill={KIND_COLORS[s.kind] || '#444c56'}
+            fill={kindColor(s.kind)}
             opacity={(clipIn != null && clipOut != null) ? (i >= clipIn && i <= clipOut ? 1 : 0.3) : 1}
           />
         ))}
