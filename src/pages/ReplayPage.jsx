@@ -210,7 +210,7 @@ export default function ReplayPage() {
             padding: '4px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', flexShrink: 0,
             background: statsOpen ? 'var(--accent-dim)' : 'var(--bg-2)',
             border: `1px solid ${statsOpen ? 'var(--accent)' : 'var(--border)'}`,
-            color: statsOpen ? 'white' : 'var(--text-secondary)',
+            color: statsOpen ? 'var(--bg-0)' : 'var(--text-secondary)',
           }}>
           Stats
         </button>

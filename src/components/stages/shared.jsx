@@ -28,7 +28,7 @@ export function CardHeader({ icon, label, meta, accent = 'var(--text-muted)' }) 
     }}>
       {icon && <span style={{ color: accent }}>{icon}</span>}
       <span style={{ fontWeight: 600, color: accent, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</span>
-      {meta && <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'white' }}>{meta}</span>}
+      {meta && <span style={{ marginLeft: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-primary)' }}>{meta}</span>}
     </div>
   );
 }

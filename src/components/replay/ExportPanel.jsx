@@ -181,12 +181,12 @@ export default function ExportPanel({ steps, clipIn, clipOut, stageRef, scrubTo,
         {/* Download / Export */}
         {downloadUrl ? (
           <a href={downloadUrl} download={downloadName}
-            style={{ display: 'block', textAlign: 'center', padding: '8px', background: 'var(--green)', color: '#000', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+            style={{ display: 'block', textAlign: 'center', padding: '8px', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
             ↓ Download {downloadName}
           </a>
         ) : (
           <button onClick={doExport} disabled={progress != null && progress < 1}
-            style={{ padding: '9px', background: progress != null && progress < 1 ? 'var(--bg-3)' : 'var(--accent-dim)', border: `1px solid var(--accent)`, color: 'white', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: progress != null && progress < 1 ? 'wait' : 'pointer' }}>
+            style={{ padding: '9px', background: progress != null && progress < 1 ? 'var(--bg-3)' : 'var(--accent-dim)', border: `1px solid var(--accent)`, color: progress != null && progress < 1 ? 'var(--text-muted)' : 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: progress != null && progress < 1 ? 'wait' : 'pointer' }}>
             {progress != null && progress < 1 ? 'Exporting…' : `Export as ${format.toUpperCase()}`}
           </button>
         )}

@@ -67,7 +67,7 @@ function TextInput({ x, y, color, onCommit, onCancel }) {
           padding: '2px 6px',
           fontFamily: "'Consolas', monospace",
           fontSize: '13px',
-          color: '#fff',
+          color: 'var(--text-primary)',
           outline: 'none',
         }}
         placeholder="Type annotation…"

@@ -401,7 +401,7 @@ export default function ExportEditorPage() {
               {downloadUrl ? (
                 <>
                   <a href={downloadUrl} download={downloadName}
-                    style={{ flex: 1, display: 'block', textAlign: 'center', padding: '9px', background: 'var(--green)', color: '#000', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                    style={{ flex: 1, display: 'block', textAlign: 'center', padding: '9px', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
                     ↓ Download {downloadName}
                   </a>
                   <button onClick={() => { setDownloadUrl(null); setPhase('idle'); }}
