@@ -2,6 +2,19 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SessionCard from '../components/picker/SessionCard.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import ConnectSessionsModal from '../components/picker/ConnectSessionsModal.jsx';
+import {
+  getSavedSessionsDirectory,
+  pickAndSaveSessionsDirectory,
+} from '../lib/fsAccess.ts';
+import {
+  loadSessionsCache,
+  saveSessionsCache,
+  clearSessionsDirectoryHandle,
+  clearSessionsCache,
+} from '../lib/sessionsStore.ts';
+import { readSessionsDirectory } from '../lib/sessionReader.ts';
+import { friendlyPickerError } from '../lib/errors.ts';
 
 function timeAgo(ts) {
   if (!ts) return '';
@@ -73,11 +86,11 @@ function ProjectRow({ project, selected, onClick }) {
 
 export default function PickerPage() {
   const navigate = useNavigate();
+  const [cache, setCache] = useState(null);
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
   const [sessions, setSessions] = useState([]);
-  const [loadingProjects, setLoadingProjects] = useState(true);
-  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [status, setStatus] = useState('booting'); // booting | needs-connect | connected | refreshing | error
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [sessionSearch, setSessionSearch] = useState('');
@@ -86,35 +99,112 @@ export default function PickerPage() {
 
   const firstSessionRef = useRef(null);
 
+  async function refreshFromHandle(handle) {
+    setStatus('refreshing');
+    setError(null);
+
+    try {
+      const nextCache = await readSessionsDirectory(handle);
+      await saveSessionsCache(nextCache);
+
+      setCache(nextCache);
+      setProjects(nextCache.projects);
+      setStatus('connected');
+    } catch (err) {
+      console.error('Failed to refresh sessions:', err);
+      setError(friendlyPickerError(err));
+      setStatus('error');
+    }
+  }
+
+  async function boot() {
+    try {
+      const existingCache = await loadSessionsCache();
+      if (existingCache) {
+        setCache(existingCache);
+        setProjects(existingCache.projects);
+      }
+
+      const handle = await getSavedSessionsDirectory();
+
+      if (!handle) {
+        setStatus('needs-connect');
+        return;
+      }
+
+      await refreshFromHandle(handle);
+    } catch (err) {
+      console.error('Boot failed:', err);
+      setError(friendlyPickerError(err));
+      setStatus('needs-connect');
+    }
+  }
+
+  async function connect() {
+    try {
+      setError(null);
+      setStatus('refreshing');
+
+      const handle = await pickAndSaveSessionsDirectory();
+      await refreshFromHandle(handle);
+    } catch (err) {
+      console.error('Connect failed:', err);
+      setError(friendlyPickerError(err));
+      setStatus('needs-connect');
+    }
+  }
+
+  async function refresh() {
+    try {
+      setError(null);
+
+      const handle = await getSavedSessionsDirectory();
+
+      if (!handle) {
+        setStatus('needs-connect');
+        return;
+      }
+
+      await refreshFromHandle(handle);
+    } catch (err) {
+      console.error('Refresh failed:', err);
+      setError(friendlyPickerError(err));
+      setStatus('error');
+    }
+  }
+
+  async function disconnect() {
+    await clearSessionsDirectoryHandle();
+    await clearSessionsCache();
+
+    setCache(null);
+    setProjects([]);
+    setSessions([]);
+    setSelectedProject(null);
+    setError(null);
+    setStatus('needs-connect');
+  }
+
   useEffect(() => {
-    fetch('/api/projects')
-      .then(r => r.json())
-      .then(data => { setProjects(data); setLoadingProjects(false); })
-      .catch(() => {
-        setError('Cannot reach bridge server. Run: yarn bridge');
-        setLoadingProjects(false);
-      });
+    boot();
   }, []);
 
   useEffect(() => {
-    if (!selectedProject) return;
-    setLoadingSessions(true);
-    setSessions([]);
-    setSessionSearch('');
-    fetch(`/api/projects/${encodeURIComponent(selectedProject.id)}/sessions`)
-      .then(r => r.json())
-      .then(data => {
-        setSessions(data);
-        setLoadingSessions(false);
-        // Focus first session after project selection
-        setTimeout(() => {
-          if (firstSessionRef.current) {
-            firstSessionRef.current.focus();
-          }
-        }, 100);
-      })
-      .catch(() => setLoadingSessions(false));
-  }, [selectedProject]);
+    if (!selectedProject) {
+      setSessions([]);
+      return;
+    }
+
+    const project = cache?.projects.find(p => p.id === selectedProject.id);
+    if (project) {
+      setSessions(project.sessions);
+      setTimeout(() => {
+        if (firstSessionRef.current) {
+          firstSessionRef.current.focus();
+        }
+      }, 100);
+    }
+  }, [selectedProject, cache]);
 
   const filteredProjects = useMemo(() => {
     let list = projects;
@@ -145,9 +235,17 @@ export default function PickerPage() {
   }, [sessions, showSubAgents, sessionSearch]);
 
   const subAgentCount = sessions.filter(s => s.isSubAgent).length;
+  const busy = status === 'booting' || status === 'refreshing';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
+
+      <ConnectSessionsModal
+        open={status === 'needs-connect'}
+        busy={busy}
+        error={error}
+        onConnect={connect}
+      />
 
       {/* Header bar */}
       <div style={{
@@ -164,6 +262,40 @@ export default function PickerPage() {
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
             Session Replay
           </span>
+          {status === 'connected' && (
+            <button
+              onClick={refresh}
+              disabled={busy}
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                borderRadius: '6px',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-secondary)',
+                marginLeft: 8,
+              }}
+            >
+              {busy ? 'Refreshing...' : 'Refresh'}
+            </button>
+          )}
+          {status === 'connected' && (
+            <button
+              onClick={disconnect}
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                cursor: 'pointer',
+                borderRadius: '6px',
+                background: 'transparent',
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+              }}
+            >
+              Disconnect
+            </button>
+          )}
         </div>
         <ThemeToggle />
       </div>
@@ -212,8 +344,8 @@ export default function PickerPage() {
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {loadingProjects && <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>}
-          {error && <div style={{ padding: '16px', color: 'var(--red)', fontSize: 12 }}>{error}</div>}
+          {busy && status === 'booting' && <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: 12 }}>Loading…</div>}
+          {error && status !== 'connected' && <div style={{ padding: '16px', color: 'var(--red)', fontSize: 12 }}>{error}</div>}
           {filteredProjects.map(p => (
             <ProjectRow
               key={p.id}
@@ -222,7 +354,7 @@ export default function PickerPage() {
               onClick={() => setSelectedProject(p)}
             />
           ))}
-          {!loadingProjects && !error && filteredProjects.length === 0 && (
+          {!busy && filteredProjects.length === 0 && status === 'connected' && (
             <div style={{ padding: '16px', color: 'var(--text-muted)', fontSize: 12 }}>
               {search ? `No projects matching "${search}"` : 'No projects found.'}
             </div>
@@ -295,7 +427,6 @@ export default function PickerPage() {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {loadingSessions && <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>Loading sessions…</div>}
               {filteredSessions.map((s, idx) => (
                 <SessionCard
                   key={s.id}
@@ -304,7 +435,7 @@ export default function PickerPage() {
                   ref={idx === 0 ? firstSessionRef : null}
                 />
               ))}
-              {!loadingSessions && filteredSessions.length === 0 && (
+              {filteredSessions.length === 0 && (
                 <div style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                   {sessionSearch ? `No sessions matching "${sessionSearch}"` : 'No sessions found.'}
                 </div>

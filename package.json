@@ -4,19 +4,19 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true; concurrently -n bridge,vite -c cyan,magenta \"node bridge/server.js\" \"vite\"",
-    "bridge": "lsof -ti:3001 | xargs kill -9 2>/dev/null || true && node bridge/server.js",
+    "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "postinstall": "cp node_modules/gif.js/dist/gif.worker.js public/gif.worker.js 2>/dev/null || true && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.js public/ 2>/dev/null || true && cp node_modules/@ffmpeg/core/dist/umd/ffmpeg-core.wasm public/ 2>/dev/null || true"
+    "postinstall": "cp node_modules/gif.js/dist/gif.worker.js public/gif.worker.js 2>/dev/null || true"
   },
   "dependencies": {
     "@ffmpeg/core": "^0.12.10",
-    "@ffmpeg/ffmpeg": "^0.12.10",
+    "@ffmpeg/ffmpeg": "^0.12.15",
     "@ffmpeg/util": "^0.12.2",
     "busboy": "^1.6.0",
     "gif.js": "^0.2.0",
     "html2canvas": "^1.4.1",
+    "idb-keyval": "^6.2.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.26.2"

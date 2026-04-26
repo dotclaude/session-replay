@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  base: '/', // Change to '/session-replay/' if deploying to user.github.io/session-replay/
   optimizeDeps: {
     // Vite's dep pre-bundler rewrites worker imports in a way that breaks COEP
     // MIME enforcement. Excluding these forces them to load as native ES modules
@@ -15,11 +16,12 @@ export default defineConfig({
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
+    // Removed /api proxy - no bridge server needed
+  },
+  preview: {
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
 });

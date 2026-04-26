@@ -14,6 +14,7 @@ import SessionClock from '../components/replay/SessionClock.jsx';
 import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import { getProcessingMessage } from '../lib/utils/processingMessages.js';
+import { loadSessionsCache } from '../lib/sessionsStore.ts';
 
 export default function ReplayPage() {
   const { sessionId } = useParams();
@@ -43,26 +44,42 @@ export default function ReplayPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/sessions/${sessionId}`)
-      .then(r => {
-        if (!r.ok) throw new Error(r.status === 404
-          ? 'Session file not found on disk. It may have been pruned or moved.'
-          : `Server error ${r.status}`);
-        return r.json();
-      })
-      .then(lines => {
-        if (!Array.isArray(lines) || lines.length === 0) {
+
+    // Load session from IndexedDB cache
+    loadSessionsCache()
+      .then(cache => {
+        if (!cache) {
+          throw new Error('No sessions cache found. Please reconnect your .claude folder.');
+        }
+
+        // Find session in cache
+        let session = null;
+        for (const project of cache.projects) {
+          session = project.sessions.find(s => s.id === sessionId);
+          if (session) break;
+        }
+
+        if (!session) {
+          throw new Error('Session not found in cache. Try refreshing on the picker page.');
+        }
+
+        if (!session.lines || session.lines.length === 0) {
           throw new Error('Session file is empty or unreadable.');
         }
-        const events = parseSession(lines);
+
+        const events = parseSession(session.lines);
         const steps = buildSteps(events);
         stepsRef.current = steps;
-        setMeta({ title: steps[0]?.event?.title || sessionId.slice(0, 16), sessionId });
+        setMeta({ title: session.title || steps[0]?.event?.title || sessionId.slice(0, 16), sessionId });
         setSessionStats(computeSessionStats(steps));
         setSearchIdx(buildSearchIndex(steps));
         setLoading(false);
       })
-      .catch(e => { setError(e.message); setLoading(false); });
+      .catch(e => {
+        console.error('Failed to load session:', e);
+        setError(e.message);
+        setLoading(false);
+      });
   }, [sessionId]);
 
   const executeStep = useCallback((step) => {
