@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 4 – Cassette Reel
+    A cassette body with two visible reel hubs and an exposed tape window —
+    a universal symbol for rewinding and replaying that transcends the digital era.
+  -->
+  <!-- Cassette body -->
+  <rect x="3" y="9" width="42" height="30" rx="5" stroke="#7c3aed" stroke-width="2.5"/>
+  <!-- Left reel ring -->
+  <circle cx="15" cy="24" r="8" stroke="#7c3aed" stroke-width="2"/>
+  <!-- Left reel hub -->
+  <circle cx="15" cy="24" r="3.5" fill="#a78bfa"/>
+  <!-- Right reel ring -->
+  <circle cx="33" cy="24" r="8" stroke="#7c3aed" stroke-width="2"/>
+  <!-- Right reel hub -->
+  <circle cx="33" cy="24" r="3.5" fill="#a78bfa"/>
+  <!-- Tape exposure window at bottom of cassette -->
+  <path d="M15,32 Q24,38 33,32" stroke="#7c3aed" stroke-width="2"
+        fill="none" stroke-linecap="round"/>
+  <!-- Label band at top -->
+  <rect x="8" y="10" width="32" height="5" rx="1" fill="#a78bfa" fill-opacity="0.25"/>
+</svg>

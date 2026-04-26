@@ -1,0 +1,121 @@
+/* ── Icon-proposal showcase ─────────────────────────────────────────── */
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 56px 24px 80px;
+}
+
+/* Header */
+.site-header {
+  text-align: center;
+  margin-bottom: 56px;
+}
+
+.badge {
+  display: inline-block;
+  background: rgba(124, 58, 237, 0.18);
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 4px 14px;
+  border-radius: 20px;
+  margin-bottom: 18px;
+}
+
+.site-header h1 {
+  font-size: clamp(28px, 5vw, 52px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  margin: 0 0 10px;
+  background: linear-gradient(135deg, #fff 20%, #a78bfa 80%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  color: #9580c4;
+  font-size: 16px;
+  margin: 0;
+}
+
+/* 5-column grid */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 16px;
+}
+
+/* Card */
+.icon-card {
+  background: rgba(26, 16, 48, 0.8);
+  border: 1px solid #2d1f50;
+  border-radius: 14px;
+  padding: 22px 16px 20px;
+  text-align: center;
+  transition: border-color 0.2s, transform 0.2s, box-shadow 0.2s;
+
+  &:hover {
+    border-color: #7c3aed;
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(124, 58, 237, 0.25);
+  }
+}
+
+.icon-option {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #a78bfa;
+  margin-bottom: 14px;
+}
+
+.icon-display {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #0f0a1e;
+  border-radius: 10px;
+  padding: 18px;
+  margin-bottom: 16px;
+}
+
+.icon-display img {
+  display: block;
+}
+
+.icon-card h2 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8e0ff;
+  margin: 0 0 8px;
+  letter-spacing: -0.01em;
+}
+
+.icon-card p {
+  font-size: 12px;
+  line-height: 1.55;
+  color: #9580c4;
+  margin: 0;
+}
+
+/* Footer */
+.site-footer {
+  margin-top: 56px;
+  text-align: center;
+
+  a {
+    color: #7c3aed;
+    font-size: 14px;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}

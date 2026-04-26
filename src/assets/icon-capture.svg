@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 2 – Cursor Ghost
+    A sharp pointer arrow leaves two progressively faded ghost copies in its
+    wake — immediately evokes replaying recorded mouse movements.
+  -->
+  <!-- Ghost 2 (farthest, most faded) -->
+  <path d="M22,20 L22,42 L27,37 L31,45 L33.5,44 L29,36 L36,36 Z"
+        fill="#a78bfa" fill-opacity="0.2"/>
+  <!-- Ghost 1 (middle) -->
+  <path d="M15,13 L15,35 L20,30 L24,38 L26.5,37 L22,29 L29,29 Z"
+        fill="#a78bfa" fill-opacity="0.5"/>
+  <!-- Main cursor (solid) -->
+  <path d="M6,4 L6,28 L11,23 L15,31 L17.5,30 L13,22 L20,22 Z"
+        fill="#7c3aed"/>
+</svg>
