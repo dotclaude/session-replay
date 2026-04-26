@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 5 – Spark Mark
+    A bold outer circle frames an inner 315° clockwise arc (with arrowhead)
+    and a solid forward-play triangle.  The outer ring gives it the feel of
+    a standalone app-icon / brand logomark.
+  -->
+  <defs>
+    <marker id="spark-arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="3.5" markerHeight="3.5" orient="auto">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#a78bfa"/>
+    </marker>
+  </defs>
+  <!-- Outer boundary ring -->
+  <circle cx="24" cy="24" r="20" stroke="#7c3aed" stroke-width="3"/>
+  <!--
+    Inner 315° clockwise arc (center 24,24 radius 11):
+    starts at rightmost (35,24), ends upper-right (31.8,16.2)
+  -->
+  <path d="M35 24 A11 11 0 1 1 31.8 16.2"
+        stroke="#a78bfa" stroke-width="2.5" stroke-linecap="round"
+        marker-end="url(#spark-arr)"/>
+  <!-- Play triangle -->
+  <polygon points="19,17 33,24 19,31" fill="#7c3aed"/>
+</svg>

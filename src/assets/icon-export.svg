@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 4 – Film Export
+    A film strip with sprocket perforations on the left side and three
+    content-lines in the frame area.  An upward export arrow to the right
+    of the strip communicates the animation-to-file export step.
+  -->
+  <!-- Film strip body -->
+  <rect x="4" y="8" width="30" height="34" rx="3" stroke="#7c3aed" stroke-width="3"/>
+  <!-- Sprocket holes -->
+  <rect x="4" y="13" width="6" height="6" rx="1" fill="#7c3aed"/>
+  <rect x="4" y="24" width="6" height="6" rx="1" fill="#7c3aed"/>
+  <rect x="4" y="35" width="6" height="6" rx="1" fill="#7c3aed"/>
+  <!-- Frame content (three horizontal lines) -->
+  <line x1="15" y1="18" x2="28" y2="18" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+  <line x1="15" y1="25" x2="28" y2="25" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+  <line x1="15" y1="32" x2="28" y2="32" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+  <!-- Export arrow shaft -->
+  <line x1="40" y1="36" x2="40" y2="18" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/>
+  <!-- Arrow head -->
+  <polyline points="34,24 40,18 46,24"
+            stroke="#38bdf8" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

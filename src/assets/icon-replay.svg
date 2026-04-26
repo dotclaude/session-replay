@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 1 – Replay Loop
+    A 315° clockwise arc with an arrowhead wraps a bold forward-play triangle.
+    Most literal expression of "session replay".
+  -->
+  <defs>
+    <marker id="replay-arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="3" markerHeight="3" orient="auto">
+      <path d="M0 1 L9 5 L0 9 Z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+  <!-- 315° clockwise arc (center 24,24 radius 16): starts at rightmost (40,24), ends upper-right (35.3,12.7) -->
+  <path d="M40 24 A16 16 0 1 1 35.3 12.7"
+        stroke="#7c3aed" stroke-width="4" stroke-linecap="round"
+        marker-end="url(#replay-arr)"/>
+  <!-- Play triangle -->
+  <polygon points="19,16 35,24 19,32" fill="#a78bfa"/>
+</svg>
