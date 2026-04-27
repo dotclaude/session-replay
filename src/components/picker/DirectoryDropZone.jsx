@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { resolveSessionsDirectory, verifyReadPermission } from '../../lib/fsAccess';
+import { resolveSessionsDirectory } from '../../lib/fsAccess';
 
 export default function DirectoryDropZone({ onDirectory, onError }) {
   const [dragging, setDragging] = useState(false);
@@ -24,13 +24,10 @@ export default function DirectoryDropZone({ onDirectory, onError }) {
       }
 
       const sessionsDir = await resolveSessionsDirectory(handle);
-      const hasPermission = await verifyReadPermission(sessionsDir);
-
-      if (!hasPermission) {
-        onError("Read permission was not granted for the dropped directory.");
-        return;
-      }
-
+      // Permission is implicitly granted by the drag-and-drop gesture;
+      // requestPermission() here would lose the user-activation context and
+      // cause Chrome to navigate away. Let connectFromHandle surface any
+      // permission errors through the normal error banner instead.
       onDirectory(sessionsDir);
     } catch (error) {
       onError(error instanceof Error ? error.message : String(error));
