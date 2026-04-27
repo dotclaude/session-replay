@@ -1,12 +1,15 @@
 import React from 'react';
 import { getHiddenFolderHint } from '../../lib/platformHints';
 import { supportsFileSystemAccess } from '../../lib/fsAccess';
+import DirectoryDropZone from './DirectoryDropZone';
 
 export default function ConnectSessionsModal({
   open,
   busy = false,
   error = null,
   onConnect,
+  onDirectory,
+  onError,
   onClose = null
 }) {
   if (!open) return null;
@@ -69,36 +72,42 @@ export default function ConnectSessionsModal({
         </div>
 
         <p style={{ fontSize: '14px', lineHeight: '1.6', color: 'var(--text-secondary)', marginBottom: '16px' }}>
-          This app runs entirely in your browser. To read local sessions, choose
-          your <code style={{ padding: '2px 6px', background: 'var(--bg-2)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>.claude</code> directory when the native picker opens.
+          This app runs entirely in your browser — nothing leaves your machine.
+          Connect your <code style={{ padding: '2px 6px', background: 'var(--bg-2)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '13px' }}>.claude</code> folder using either method below.
         </p>
 
+        {/* Primary: drag and drop */}
+        {onDirectory && (
+          <div style={{ marginBottom: '16px' }}>
+            <DirectoryDropZone
+              onDirectory={onDirectory}
+              onError={onError ?? (() => {})}
+            />
+          </div>
+        )}
+
+        {/* Divider */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>or use the file picker</span>
+          <div style={{ flex: 1, height: '1px', background: 'var(--border)' }} />
+        </div>
+
+        {/* Hidden folder hint for file picker */}
         <div
           style={{
-            padding: '12px',
+            padding: '10px 12px',
             background: 'var(--bg-2)',
             border: '1px solid var(--border)',
             borderRadius: '8px',
             marginBottom: '12px',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
           }}
         >
-          <strong style={{ fontSize: '13px', color: 'var(--text-primary)' }}>Hidden folder hint:</strong>{' '}
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{getHiddenFolderHint()}</span>
-        </div>
-
-        <div
-          style={{
-            padding: '12px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            marginBottom: '16px',
-          }}
-        >
-          <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-            You may select <code style={{ padding: '2px 6px', background: 'var(--bg-3)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>.claude</code> directly. You may also select
-            your home folder if it contains <code style={{ padding: '2px 6px', background: 'var(--bg-3)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '12px' }}>.claude</code>.
-          </span>
+          <strong style={{ color: 'var(--text-primary)' }}>Tip: </strong>
+          {getHiddenFolderHint()}
+          {' '}You can also select your home folder — the app will find <code style={{ fontFamily: 'var(--font-mono)', fontSize: '12px' }}>.claude</code> inside it automatically.
         </div>
 
         {!supported && (
@@ -108,7 +117,7 @@ export default function ConnectSessionsModal({
               background: 'rgba(88, 166, 255, 0.1)',
               border: '1px solid rgba(88, 166, 255, 0.3)',
               borderRadius: '8px',
-              marginBottom: '16px',
+              marginBottom: '12px',
             }}
           >
             <strong style={{ fontSize: '13px', color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
@@ -127,7 +136,7 @@ export default function ConnectSessionsModal({
               background: 'rgba(255, 68, 68, 0.1)',
               border: '1px solid rgba(255, 68, 68, 0.3)',
               borderRadius: '8px',
-              marginBottom: '16px',
+              marginBottom: '12px',
               color: 'var(--red)',
               fontSize: '13px',
             }}

@@ -13,6 +13,7 @@ import {
 import {
   loadSessionsCache,
   saveSessionsCache,
+  saveSessionsDirectoryHandle,
   clearSessionsDirectoryHandle,
   clearSessionsCache,
 } from '../lib/sessionsStore.ts';
@@ -185,6 +186,19 @@ export default function PickerPage() {
     }
   }
 
+  async function connectFromHandle(handle) {
+    try {
+      setError(null);
+      setStatus('refreshing');
+      await saveSessionsDirectoryHandle(handle);
+      await refreshFromHandle(handle);
+    } catch (err) {
+      console.error('Connect from handle failed:', err);
+      setError(friendlyPickerError(err));
+      setStatus('needs-connect');
+    }
+  }
+
   async function handleFallbackCache(fallbackCache) {
     await saveSessionsCache(fallbackCache);
     setCache(fallbackCache);
@@ -297,6 +311,8 @@ export default function PickerPage() {
         busy={busy}
         error={error}
         onConnect={connect}
+        onDirectory={connectFromHandle}
+        onError={(msg) => { setError(msg); setStatus('needs-connect'); }}
       />
 
       {/* Fallback import for Firefox/Safari */}
