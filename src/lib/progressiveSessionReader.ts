@@ -28,60 +28,63 @@ export async function scanProjectsMetadata(
 
   const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
 
-  for await (const [projectDirName, projectHandle] of projectsHandle.entries()) {
-    if (projectHandle.kind !== "directory") continue;
-
-    onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
-
-    try {
-      const sessions = await scanProjectSessions(projectHandle as FileSystemDirectoryHandle);
-
-      if (sessions.length === 0) continue;
-
-      // Extract cwd from first session or sessions-index.json
-      let cwd: string | null = null;
-      try {
-        const indexHandle = await projectHandle.getFileHandle("sessions-index.json", { create: false });
-        const index = await readJson(indexHandle as FileSystemFileHandle);
-        cwd = index?.originalPath || index?.entries?.[0]?.projectPath || null;
-      } catch {
-        // Try first session
-        cwd = sessions.find(s => s.cwd)?.cwd || null;
-      }
-
-      const label = cwd ? cwd.split('/').pop() || cwd : projectDirName.replace(/^-/, '').replace(/-/g, '/');
-
-      // Find most recent timestamp
-      let firstTs: string | null = null;
-      for (const s of sessions) {
-        if (s.firstTs && (!firstTs || s.firstTs > firstTs)) {
-          firstTs = s.firstTs;
-        }
-      }
-
-      const sessionCount = sessions.filter(s => !s.isSubAgent).length;
-      const subAgentCount = sessions.filter(s => s.isSubAgent).length;
-
-      if (sessionCount === 0 && subAgentCount === 0) continue;
-
-      projectsScanned++;
-      sessionsFound += sessionCount;
-
-      projects.push({
-        id: projectDirName,
-        label,
-        cwd,
-        sessionCount,
-        subAgentCount,
-        firstTs,
-        sessions: sessions as any,
-      });
-
-      onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
-    } catch (err) {
-      console.warn(`Skipping project ${projectDirName}:`, err);
-      continue;
+  // Collect all project directory handles first
+  const projectEntries: [string, FileSystemDirectoryHandle][] = [];
+  for await (const [name, handle] of projectsHandle.entries()) {
+    if (handle.kind === "directory") {
+      projectEntries.push([name, handle as FileSystemDirectoryHandle]);
     }
+  }
+
+  // Scan projects concurrently in batches
+  for (let i = 0; i < projectEntries.length; i += CONCURRENCY) {
+    const batch = projectEntries.slice(i, i + CONCURRENCY);
+    const batchNames = batch.map(([name]) => name).join(', ');
+    onProgress?.({ projectsScanned, sessionsFound, currentProject: batchNames });
+
+    const results = await Promise.all(
+      batch.map(async ([projectDirName, projectHandle]) => {
+        try {
+          const sessions = await scanProjectSessions(projectHandle);
+          if (sessions.length === 0) return null;
+
+          let cwd: string | null = null;
+          try {
+            const indexHandle = await projectHandle.getFileHandle("sessions-index.json", { create: false });
+            const index = await readJson(indexHandle as FileSystemFileHandle);
+            cwd = index?.originalPath || index?.entries?.[0]?.projectPath || null;
+          } catch {
+            cwd = sessions.find(s => s.cwd)?.cwd || null;
+          }
+
+          const label = cwd ? cwd.split('/').pop() || cwd : projectDirName.replace(/^-/, '').replace(/-/g, '/');
+
+          let firstTs: string | null = null;
+          for (const s of sessions) {
+            if (s.firstTs && (!firstTs || s.firstTs > firstTs)) firstTs = s.firstTs;
+          }
+
+          const sessionCount = sessions.filter(s => !s.isSubAgent).length;
+          const subAgentCount = sessions.filter(s => s.isSubAgent).length;
+
+          if (sessionCount === 0 && subAgentCount === 0) return null;
+
+          return { id: projectDirName, label, cwd, sessionCount, subAgentCount, firstTs, sessions: sessions as any };
+        } catch (err) {
+          console.warn(`Skipping project ${projectDirName}:`, err);
+          return null;
+        }
+      })
+    );
+
+    for (const result of results) {
+      if (!result) continue;
+      projectsScanned++;
+      sessionsFound += result.sessionCount;
+      projects.push(result);
+    }
+
+    onProgress?.({ projectsScanned, sessionsFound, currentProject: null });
   }
 
   projects.sort((a, b) => (b.firstTs || "").localeCompare(a.firstTs || ""));
@@ -92,6 +95,8 @@ export async function scanProjectsMetadata(
 /**
  * Scan a single project's sessions - only read first/last lines for metadata
  */
+const CONCURRENCY = 8;
+
 async function scanProjectSessions(
   projDirHandle: FileSystemDirectoryHandle
 ): Promise<LightweightSessionMetadata[]> {
@@ -102,25 +107,26 @@ async function scanProjectSessions(
     entries.push(entry);
   }
 
-  // Scan direct .jsonl files (Format A - main sessions)
+  // Collect all session file handles first
+  const sessionFiles: { id: string; handle: FileSystemFileHandle }[] = [];
   for (const [name, handle] of entries) {
     if (handle.kind !== "file") continue;
     if (!name.endsWith('.jsonl')) continue;
-
     const id = name.replace('.jsonl', '');
     if (!isUuidDir(id)) continue;
+    sessionFiles.push({ id, handle: handle as FileSystemFileHandle });
+  }
 
-    const fileHandle = handle as FileSystemFileHandle;
-
-    // Read only first/last 50 lines for metadata (much faster than full file)
-    const meta = await extractLightweightMetadata(fileHandle);
-
-    sessions.push({
-      id,
-      projectId: projDirHandle.name,
-      isSubAgent: false,
-      ...meta,
-    });
+  // Read all session files concurrently with bounded parallelism
+  for (let i = 0; i < sessionFiles.length; i += CONCURRENCY) {
+    const batch = sessionFiles.slice(i, i + CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async ({ id, handle }) => {
+        const meta = await extractLightweightMetadata(handle);
+        return { id, projectId: projDirHandle.name, isSubAgent: false, ...meta };
+      })
+    );
+    sessions.push(...results);
   }
 
   // Scan subdirectories for sub-agents (Format C)
@@ -155,12 +161,6 @@ async function scanProjectSessions(
 // before JSON parsing so we get metadata fields without the memory cost.
 const LINE_TRUNCATE_BYTES = 4_000;
 
-/**
- * Extract metadata by reading every line of the file but truncating
- * oversized lines before JSON parsing. This gives accurate tool counts,
- * turn counts, and token totals across the whole session while keeping
- * memory use proportional to the number of lines, not their total size.
- */
 async function extractLightweightMetadata(
   fileHandle: FileSystemFileHandle
 ): Promise<Omit<SessionMetadata, 'id' | 'projectId' | 'isSubAgent' | 'lines'>> {
@@ -170,10 +170,7 @@ async function extractLightweightMetadata(
 
     const parsed = text.split('\n').filter(Boolean).map(line => {
       try {
-        // For short lines parse directly — fast path
         if (line.length <= LINE_TRUNCATE_BYTES) return JSON.parse(line);
-        // For long lines strip the large content arrays/strings before parsing
-        // so we still get type, timestamp, usage, tool names, etc.
         return parseLineStrippingContent(line);
       } catch {
         return null;
