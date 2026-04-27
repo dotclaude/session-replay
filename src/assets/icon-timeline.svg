@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none">
+  <!--
+    Option 3 – Cel Stack
+    Three animation cels fanned diagonally (back-to-front) with a play arrow
+    in the foreground cel and a scrubber track below — the language of
+    frame-by-frame animation playback.
+  -->
+  <!-- Back frame (faintest) -->
+  <rect x="16" y="5" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2" stroke-opacity="0.3"/>
+  <!-- Middle frame -->
+  <rect x="10" y="11" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2" stroke-opacity="0.6"/>
+  <!-- Front frame (full opacity) -->
+  <rect x="4" y="17" width="28" height="22" rx="3"
+        stroke="#7c3aed" stroke-width="2.5"/>
+  <!-- Play arrow inside front frame -->
+  <polygon points="12,23 12,33 24,28" fill="#a78bfa"/>
+  <!-- Scrub track -->
+  <line x1="4" y1="44" x2="44" y2="44" stroke="#4c1d95" stroke-width="2" stroke-linecap="round"/>
+  <!-- Playhead position dot -->
+  <circle cx="18" cy="44" r="3.5" fill="#7c3aed"/>
+</svg>

@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 290 70"
+     style="background:#0f0a1e">
+  <!-- All 5 icons rendered in a horizontal strip with labels.
+       Each icon occupies a 48×48 cell; cells are spaced 58px apart.
+       Labels sit 54px below the top of each cell. -->
+
+  <!-- ── 1: Browser Play ── -->
+  <g transform="translate(1,4)">
+    <rect x="3" y="7" width="42" height="34" rx="4" stroke="#7c3aed" stroke-width="2.5" fill="none"/>
+    <rect x="3" y="7" width="42" height="12" rx="4" fill="#7c3aed"/>
+    <rect x="3" y="13" width="42" height="6" fill="#7c3aed"/>
+    <circle cx="10" cy="12.5" r="2" fill="#f87171"/>
+    <circle cx="17" cy="12.5" r="2" fill="#fbbf24"/>
+    <circle cx="24" cy="12.5" r="2" fill="#34d399"/>
+    <circle cx="24" cy="30" r="9" fill="#a78bfa"/>
+    <polygon points="21.5,26 21.5,34 30.5,30" fill="white"/>
+    <text x="24" y="56" text-anchor="middle" font-size="6" fill="#a78bfa"
+          font-family="system-ui,sans-serif">Browser Play</text>
+  </g>
+
+  <!-- ── 2: Cursor Ghost ── -->
+  <g transform="translate(59,4)">
+    <path d="M22,20 L22,42 L27,37 L31,45 L33.5,44 L29,36 L36,36 Z"
+          fill="#a78bfa" fill-opacity="0.2"/>
+    <path d="M15,13 L15,35 L20,30 L24,38 L26.5,37 L22,29 L29,29 Z"
+          fill="#a78bfa" fill-opacity="0.5"/>
+    <path d="M6,4 L6,28 L11,23 L15,31 L17.5,30 L13,22 L20,22 Z"
+          fill="#7c3aed"/>
+    <text x="24" y="56" text-anchor="middle" font-size="6" fill="#a78bfa"
+          font-family="system-ui,sans-serif">Cursor Ghost</text>
+  </g>
+
+  <!-- ── 3: Cel Stack ── -->
+  <g transform="translate(117,4)">
+    <rect x="16" y="5" width="28" height="22" rx="3"
+          stroke="#7c3aed" stroke-width="2" stroke-opacity="0.3" fill="none"/>
+    <rect x="10" y="11" width="28" height="22" rx="3"
+          stroke="#7c3aed" stroke-width="2" stroke-opacity="0.6" fill="none"/>
+    <rect x="4" y="17" width="28" height="22" rx="3"
+          stroke="#7c3aed" stroke-width="2.5" fill="none"/>
+    <polygon points="12,23 12,33 24,28" fill="#a78bfa"/>
+    <line x1="4" y1="45" x2="44" y2="45" stroke="#4c1d95" stroke-width="2"
+          stroke-linecap="round"/>
+    <circle cx="18" cy="45" r="3.5" fill="#7c3aed"/>
+    <text x="24" y="56" text-anchor="middle" font-size="6" fill="#a78bfa"
+          font-family="system-ui,sans-serif">Cel Stack</text>
+  </g>
+
+  <!-- ── 4: Cassette Reel ── -->
+  <g transform="translate(175,4)">
+    <rect x="3" y="9" width="42" height="30" rx="5" stroke="#7c3aed" stroke-width="2.5" fill="none"/>
+    <circle cx="15" cy="24" r="8" stroke="#7c3aed" stroke-width="2" fill="none"/>
+    <circle cx="15" cy="24" r="3.5" fill="#a78bfa"/>
+    <circle cx="33" cy="24" r="8" stroke="#7c3aed" stroke-width="2" fill="none"/>
+    <circle cx="33" cy="24" r="3.5" fill="#a78bfa"/>
+    <path d="M15,32 Q24,38 33,32" stroke="#7c3aed" stroke-width="2"
+          fill="none" stroke-linecap="round"/>
+    <rect x="8" y="10" width="32" height="5" rx="1" fill="#a78bfa" fill-opacity="0.25"/>
+    <text x="24" y="56" text-anchor="middle" font-size="6" fill="#a78bfa"
+          font-family="system-ui,sans-serif">Cassette Reel</text>
+  </g>
+
+  <!-- ── 5: Viewfinder ── -->
+  <g transform="translate(233,4)">
+    <circle cx="24" cy="24" r="17" stroke="#7c3aed" stroke-width="2.5" fill="none"/>
+    <path d="M10,17 L10,10 L17,10" stroke="#7c3aed" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M31,10 L38,10 L38,17" stroke="#7c3aed" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M10,31 L10,38 L17,38" stroke="#7c3aed" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M31,38 L38,38 L38,31" stroke="#7c3aed" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <line x1="15" y1="24" x2="20" y2="24" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+    <line x1="28" y1="24" x2="33" y2="24" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+    <line x1="24" y1="15" x2="24" y2="20" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+    <line x1="24" y1="28" x2="24" y2="33" stroke="#a78bfa" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="24" cy="24" r="2.5" fill="#7c3aed"/>
+    <circle cx="39" cy="9" r="3" fill="#f43f5e"/>
+    <text x="24" y="56" text-anchor="middle" font-size="6" fill="#a78bfa"
+          font-family="system-ui,sans-serif">Viewfinder</text>
+  </g>
+</svg>

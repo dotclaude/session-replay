@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/', // Change to '/session-replay/' if deploying to user.github.io/session-replay/
+  base: '/session-replay/',
   optimizeDeps: {
     // Vite's dep pre-bundler rewrites worker imports in a way that breaks COEP
     // MIME enforcement. Excluding these forces them to load as native ES modules
