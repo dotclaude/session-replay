@@ -97,6 +97,7 @@ export default function PickerPage() {
   const [sessions, setSessions] = useState([]);
   const [status, setStatus] = useState('booting'); // booting | needs-connect | connected | refreshing | error
   const [error, setError] = useState(null);
+  const [scanProgress, setScanProgress] = useState(null);
   const [search, setSearch] = useState('');
   const [sessionSearch, setSessionSearch] = useState('');
   const [sortBy, setSortBy] = useState('recent');
@@ -109,8 +110,8 @@ export default function PickerPage() {
     setError(null);
 
     try {
-      // Use progressive loading - only scan metadata, not full JSONL content
-      const projects = await scanProjectsMetadata(handle);
+      setScanProgress({ projectsScanned: 0, sessionsFound: 0, currentProject: null });
+      const projects = await scanProjectsMetadata(handle, setScanProgress);
 
       const nextCache = {
         generatedAt: new Date().toISOString(),
@@ -122,6 +123,7 @@ export default function PickerPage() {
 
       setCache(nextCache);
       setProjects(projects);
+      setScanProgress(null);
       setStatus('connected');
     } catch (err) {
       console.error('Failed to refresh sessions:', err);
@@ -310,6 +312,7 @@ export default function PickerPage() {
         open={(status === 'needs-connect' || status === 'refreshing') && supportsFileSystemAccess() && projects.length === 0}
         busy={busy}
         error={error}
+        scanProgress={scanProgress}
         onConnect={connect}
         onDirectory={connectFromHandle}
         onError={(msg) => { setError(msg); setStatus('needs-connect'); }}

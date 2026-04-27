@@ -7,6 +7,7 @@ export default function ConnectSessionsModal({
   open,
   busy = false,
   error = null,
+  scanProgress = null,
   onConnect,
   onDirectory,
   onError,
@@ -158,6 +159,33 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
+        {scanProgress && (
+          <div style={{
+            padding: '12px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            marginBottom: '12px',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span>Scanning sessions…</span>
+              <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {scanProgress.projectsScanned} project{scanProgress.projectsScanned !== 1 ? 's' : ''} · {scanProgress.sessionsFound} session{scanProgress.sessionsFound !== 1 ? 's' : ''}
+              </span>
+            </div>
+            {scanProgress.currentProject && (
+              <div style={{
+                fontSize: '11px', color: 'var(--text-muted)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              }}>
+                {scanProgress.currentProject}
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <div
             style={{
@@ -174,24 +202,26 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button
-            disabled={busy}
-            onClick={onConnect}
-            style={{
-              padding: '10px 20px',
-              fontSize: '14px',
-              fontWeight: 600,
-              cursor: busy ? 'not-allowed' : 'pointer',
-              borderRadius: '8px',
-              background: busy ? 'var(--bg-3)' : 'var(--accent)',
-              border: 'none',
-              color: busy ? 'var(--text-muted)' : 'white',
-            }}
-          >
-            {busy ? 'Loading...' : (supported ? 'Select .claude folder' : 'Import .claude folder')}
-          </button>
-        </div>
+        {!scanProgress && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              disabled={busy}
+              onClick={onConnect}
+              style={{
+                padding: '10px 20px',
+                fontSize: '14px',
+                fontWeight: 600,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                borderRadius: '8px',
+                background: busy ? 'var(--bg-3)' : 'var(--accent)',
+                border: 'none',
+                color: busy ? 'var(--text-muted)' : 'white',
+              }}
+            >
+              {busy ? 'Loading...' : (supported ? 'Select .claude folder' : 'Import .claude folder')}
+            </button>
+          </div>
+        )}
       </section>
     </div>
   );

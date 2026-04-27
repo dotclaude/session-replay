@@ -12,15 +12,26 @@ interface LightweightSessionMetadata extends Omit<SessionMetadata, 'lines'> {
  * Scan directory structure and read only session metadata (no full JSONL content)
  * This is MUCH faster for large directories with thousands of sessions
  */
+export interface ScanProgress {
+  projectsScanned: number;
+  sessionsFound: number;
+  currentProject: string | null;
+}
+
 export async function scanProjectsMetadata(
-  claudeHandle: FileSystemDirectoryHandle
+  claudeHandle: FileSystemDirectoryHandle,
+  onProgress?: (progress: ScanProgress) => void
 ): Promise<ProjectCache[]> {
   const projects: ProjectCache[] = [];
+  let projectsScanned = 0;
+  let sessionsFound = 0;
 
   const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
 
   for await (const [projectDirName, projectHandle] of projectsHandle.entries()) {
     if (projectHandle.kind !== "directory") continue;
+
+    onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
 
     try {
       const sessions = await scanProjectSessions(projectHandle as FileSystemDirectoryHandle);
@@ -53,6 +64,9 @@ export async function scanProjectsMetadata(
 
       if (sessionCount === 0 && subAgentCount === 0) continue;
 
+      projectsScanned++;
+      sessionsFound += sessionCount;
+
       projects.push({
         id: projectDirName,
         label,
@@ -60,8 +74,10 @@ export async function scanProjectsMetadata(
         sessionCount,
         subAgentCount,
         firstTs,
-        sessions: sessions as any, // Will be lightweight
+        sessions: sessions as any,
       });
+
+      onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
     } catch (err) {
       console.warn(`Skipping project ${projectDirName}:`, err);
       continue;
