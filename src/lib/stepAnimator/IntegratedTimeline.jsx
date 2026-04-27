@@ -70,6 +70,23 @@ export default function IntegratedTimeline({
     }
   }, [currentStep, totalSteps, onScrub, steps]);
 
+  // Add wheel event listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const trackElement = containerRef.current?.querySelector('[data-timeline-track]');
+    if (!trackElement) return;
+
+    const wheelHandler = (e) => {
+      e.preventDefault();
+      handleWheel(e);
+    };
+
+    trackElement.addEventListener('wheel', wheelHandler, { passive: false });
+
+    return () => {
+      trackElement.removeEventListener('wheel', wheelHandler);
+    };
+  }, [handleWheel]);
+
   const handleKeyDown = useCallback((e) => {
     let newStep = currentStep;
 
@@ -139,7 +156,6 @@ export default function IntegratedTimeline({
       {/* Timeline with colored steps */}
       <div
         data-timeline-track
-        onWheel={handleWheel}
         onKeyDown={handleKeyDown}
         tabIndex={0}
         role="slider"
