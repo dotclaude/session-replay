@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { getHiddenFolderHint } from '../../lib/platformHints';
-import { supportsFileSystemAccess } from '../../lib/fsAccess';
-import { resolveSessionsDirectory } from '../../lib/fsAccess';
+import { supportsFileSystemAccess, resolveSessionsDirectory } from '../../lib/fsAccess';
+import DirectoryDropZone from './DirectoryDropZone';
 
 export default function ConnectSessionsModal({
   open,

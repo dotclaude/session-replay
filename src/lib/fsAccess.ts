@@ -12,26 +12,22 @@ export function supportsFileSystemAccess(): boolean {
   return typeof window !== "undefined" && "showDirectoryPicker" in window;
 }
 
+// queryOnly=true: check permission without prompting (safe to call on boot).
+// queryOnly=false: prompt if needed (requires a user gesture).
 export async function verifyReadPermission(
-  handle: FileSystemDirectoryHandle
+  handle: FileSystemDirectoryHandle,
+  queryOnly = false
 ): Promise<boolean> {
   const descriptor: FileSystemHandlePermissionDescriptor = { mode: "read" };
 
-  if (!handle.queryPermission || !handle.requestPermission) {
-    // Some implementations may not expose permission helpers.
-    // Try read path later and handle errors there.
+  if (!handle.queryPermission) {
     return true;
   }
 
   const current = await handle.queryPermission(descriptor);
 
-  if (current === "granted") {
-    return true;
-  }
-
-  if (current === "denied") {
-    return false;
-  }
+  if (current === "granted") return true;
+  if (current === "denied" || queryOnly || !handle.requestPermission) return false;
 
   const requested = await handle.requestPermission(descriptor);
   return requested === "granted";
@@ -89,10 +85,10 @@ export async function getSavedSessionsDirectory(): Promise<
 
   console.log('[fsAccess] Handle loaded from IndexedDB:', saved.name);
 
-  const hasPermission = await verifyReadPermission(saved);
+  const hasPermission = await verifyReadPermission(saved, true);
 
   if (!hasPermission) {
-    console.log('[fsAccess] Permission denied for handle');
+    console.log('[fsAccess] Permission not yet granted for handle (will prompt on next user gesture)');
     return undefined;
   }
 
