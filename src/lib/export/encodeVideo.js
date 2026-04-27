@@ -118,14 +118,32 @@ function buildFfconcat(frameFiles, durations) {
   return lines.join('\n');
 }
 
-async function encodeViaWasm({ frames, steps, format, timing, width, onProgress }) {
+async function encodeViaWasm({ frames, steps, durations: precomputedDurations, format, timing, width, onProgress }) {
   const encodeStart = performance.now();
   const encodeLog = (msg) => console.log(`[encode +${(performance.now() - encodeStart).toFixed(0)}ms] ${msg}`);
 
   const ffmpeg = await getFFmpeg();
 
-  const srcW = evenInt(frames[0]?.width ?? width ?? 900);
-  const srcH = evenInt(frames[0]?.height ?? Math.round(srcW * 2 / 3));
+  // frames is now string[] (Blob URLs) from captureFrames. Determine dimensions by
+  // fetching the first frame and drawing it to a temporary canvas.
+  const isUrlArray = typeof frames[0] === 'string';
+
+  let srcW, srcH;
+  if (isUrlArray) {
+    // Peek at first frame to get dimensions
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = frames[0];
+    });
+    srcW = evenInt(img.naturalWidth || width || 900);
+    srcH = evenInt(img.naturalHeight || Math.round(srcW * 2 / 3));
+  } else {
+    srcW = evenInt(frames[0]?.width ?? width ?? 900);
+    srcH = evenInt(frames[0]?.height ?? Math.round(srcW * 2 / 3));
+  }
+
   const outW = evenInt(Math.min(width ?? srcW, 1280));
   const outH = evenInt(srcH * (outW / srcW));
 
@@ -135,6 +153,7 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
 
   encodeLog(`start: ${frames.length} frames, ${srcW}x${srcH} → ${outW}x${outH}, format=${format}`);
   encodeLog(`timing: mode=${timing.mode} speed=${timing.playbackSpeed} compression=${timing.compressionFactor} duration=${timing.animationDuration}ms`);
+  encodeLog(`frame source: ${isUrlArray ? 'Blob URLs' : 'HTMLCanvasElement[]'}`);
 
   await cleanVfs(ffmpeg, [...frameFiles, concatFile, 'palette.png', outputFile]);
 
@@ -143,8 +162,15 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
     encodeLog(`writing ${frames.length} PNG frames to VFS...`);
     const writeStart = performance.now();
     for (let i = 0; i < frames.length; i++) {
-      const blob = await new Promise(r => frames[i].toBlob(r, 'image/png'));
-      const data = await fetchFile(blob);
+      let data;
+      if (isUrlArray) {
+        // Blob URL → fetch the blob directly (no canvas round-trip needed)
+        const blob = await fetch(frames[i]).then(r => r.blob());
+        data = await fetchFile(blob);
+      } else {
+        const blob = await new Promise(r => frames[i].toBlob(r, 'image/png'));
+        data = await fetchFile(blob);
+      }
       await ffmpeg.writeFile(frameFiles[i], data);
       if (i % 20 === 0 || i === frames.length - 1) {
         encodeLog(`  wrote frame ${i + 1}/${frames.length} (+${(performance.now() - writeStart).toFixed(0)}ms)`);
@@ -153,8 +179,17 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
     }
     encodeLog(`VFS write done in ${(performance.now() - writeStart).toFixed(0)}ms`);
 
-    // Phase 2: precompute durations + write ffconcat
-    const { durations, totalSec } = computeDurations(steps, timing);
+    // Phase 2: precompute durations + write ffconcat.
+    // If captureFrames pre-computed per-frame durations (animated indicator path),
+    // use those directly. Otherwise fall back to deriving from step timestamps.
+    let durations, totalSec;
+    if (precomputedDurations && precomputedDurations.length === frames.length) {
+      durations = precomputedDurations;
+      totalSec = durations.reduce((s, d) => s + d, 0);
+      encodeLog(`using pre-computed durations from captureFrames (${durations.length} entries)`);
+    } else {
+      ({ durations, totalSec } = computeDurations(steps, timing));
+    }
     const concatText = buildFfconcat(frameFiles, durations);
     await ffmpeg.writeFile(concatFile, concatText);
 
@@ -234,14 +269,14 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
   }
 }
 
-export async function encodeGif({ frames, steps, timing, quality, onProgress }) {
-  return encodeViaWasm({ frames, steps, format: 'gif', timing, width: frames[0]?.width, onProgress });
+export async function encodeGif({ frames, steps, durations, timing, quality, onProgress }) {
+  return encodeViaWasm({ frames, steps, durations, format: 'gif', timing, width: null, onProgress });
 }
 
-export async function encodeMp4({ frames, steps, timing, width, onProgress }) {
-  return encodeViaWasm({ frames, steps, format: 'mp4', timing, width, onProgress });
+export async function encodeMp4({ frames, steps, durations, timing, width, onProgress }) {
+  return encodeViaWasm({ frames, steps, durations, format: 'mp4', timing, width: width ?? null, onProgress });
 }
 
-export async function encodeWebm({ frames, steps, timing, width, onProgress }) {
-  return encodeViaWasm({ frames, steps, format: 'webm', timing, width, onProgress });
+export async function encodeWebm({ frames, steps, durations, timing, width, onProgress }) {
+  return encodeViaWasm({ frames, steps, durations, format: 'webm', timing, width: width ?? null, onProgress });
 }

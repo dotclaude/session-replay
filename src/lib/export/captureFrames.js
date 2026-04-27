@@ -7,24 +7,39 @@
  *   1. Wait 1 rAF for React to paint (flushSync in recording mode means
  *      state is already committed — 1 rAF is sufficient)
  *   2. Pause + seek all CSS animations to a deterministic point before screenshot
- *   3. Capture content frame via html2canvas
- *   4. If not last step: seek animations to indicator peak, capture indicator frame
+ *   3. Capture content frame via html2canvas → immediately serialize to Blob URL
+ *   4. If not last step: animate through the ProcessingIndicator pulse cycle,
+ *      capturing one frame every INDICATOR_FRAME_MS ms of animation time,
+ *      up to MAX_INDICATOR_FRAMES total (loops the 1400ms pulse cycle)
  *   5. Resume animations, signal animator to advance
  *
- * Using the Web Animations API to pause/seek gives deterministic CSS animation
- * frames without waiting for animation cycles to complete.
+ * Frame serialization:
+ *   Each canvas is immediately converted to a Blob URL and the canvas released.
+ *   This keeps peak JS heap flat regardless of session length, preventing the
+ *   GC stalls that occur when accumulating 1000+ large canvas objects.
  *
- * Returns: { frames: HTMLCanvasElement[], steps: Array }
+ * Animated indicator:
+ *   The ProcessingIndicator has a 1.4s CSS pulse animation on 3 dots with
+ *   delays 0s/0.2s/0.4s. We capture indicator frames by seeking through the
+ *   animation timeline at INDICATOR_FRAME_MS intervals, producing ~8fps motion
+ *   that looks like the dots are actually pulsing in the video.
+ *
+ * Returns: { frames: string[] (Blob URLs), steps: Array, revokeAll: () => void }
  */
 
 import html2canvas from 'html2canvas';
 
 const SKIP_KINDS = new Set(['session-header', 'local-command-output', 'queue-op']);
-const INDICATOR_HOLD_FRAMES = 2;
 
-// Seek time for ProcessingIndicator dots during indicator frames:
-// 0.42s = all 3 dots near peak of their staggered pulse (0s, 0.2s, 0.4s delays)
-const INDICATOR_SEEK_MS = 420;
+// ProcessingIndicator pulse animation: 1400ms cycle, 3 dots at 0/200/400ms delays.
+// We sample the cycle at this interval to produce smooth-looking motion.
+const INDICATOR_FRAME_MS = 125;     // 8fps through the animation cycle
+const INDICATOR_CYCLE_MS = 1400;    // matches CSS animation-duration
+// Max indicator frames per step regardless of how long the gap is.
+// At 8fps this is ~4 seconds of animation — long gaps just loop.
+const MAX_INDICATOR_FRAMES = 32;
+// Minimum indicator frames for very short gaps (always show at least 1 pulse)
+const MIN_INDICATOR_FRAMES = 3;
 // Seek time for content frames: 0ms = animations at rest / start state
 const CONTENT_SEEK_MS = 0;
 
@@ -67,7 +82,43 @@ async function captureEl(previewEl, dpr, w, h) {
   return c;
 }
 
-export function captureFrames({ previewEl, animatorRef, steps, onProgress }) {
+// Serialise a canvas to a Blob URL immediately, releasing the canvas pixel buffer.
+function canvasToBlobUrl(canvas) {
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      resolve(URL.createObjectURL(blob));
+    }, 'image/png');
+  });
+}
+
+// Compute how many indicator frames to generate for a given inter-step gap.
+// stepDurationMs is the video hold time for this step (matching encodeVideo timing).
+function indicatorFrameCount(stepDurationMs) {
+  if (stepDurationMs <= 0) return MIN_INDICATOR_FRAMES;
+  const natural = Math.ceil(stepDurationMs / INDICATOR_FRAME_MS);
+  return Math.min(Math.max(natural, MIN_INDICATOR_FRAMES), MAX_INDICATOR_FRAMES);
+}
+
+// Mirror of encodeVideo's computeHoldSec — computes inter-step gap in ms.
+function computeStepDurationMs(steps, index, timing) {
+  const { mode, animationDuration, playbackSpeed, compressionFactor } = timing;
+  const fixedMs = animationDuration / Math.max(playbackSpeed, 0.01);
+
+  if (mode === 'fixed') return fixedMs;
+
+  const cur  = steps[index]?.timestamp;
+  const next = steps[index + 1]?.timestamp;
+  if (!cur || !next) return fixedMs;
+
+  const deltaMs = new Date(next) - new Date(cur);
+  if (deltaMs <= 0) return fixedMs;
+
+  if (mode === 'realtime')   return deltaMs / Math.max(playbackSpeed, 0.01);
+  if (mode === 'compressed') return deltaMs / Math.max(compressionFactor, 0.01);
+  return fixedMs;
+}
+
+export function captureFrames({ previewEl, animatorRef, steps, timing, onProgress }) {
   return new Promise((resolve, reject) => {
     const exportStart = performance.now();
     const log = (msg) => console.log(`[capture +${(performance.now() - exportStart).toFixed(0)}ms] ${msg}`);
@@ -78,21 +129,27 @@ export function captureFrames({ previewEl, animatorRef, steps, onProgress }) {
 
     log(`start: ${totalSteps} total steps, ${captureSteps.length} visual steps, ${steps.length} clipped steps`);
     log(`preview element: ${previewEl.offsetWidth}x${previewEl.offsetHeight}, dpr=${window.devicePixelRatio}`);
+    log(`timing: mode=${timing?.mode} speed=${timing?.playbackSpeed} compression=${timing?.compressionFactor}`);
 
     if (captureSteps.length === 0) {
       log('no visual steps — resolving empty');
-      resolve({ frames: [], steps: [] });
+      resolve({ frames: [], steps: [], revokeAll: () => {} });
       return;
     }
 
-    const frames = [];
+    const blobUrls = [];      // string[] — Blob URLs, one per frame
     const capturedSteps = [];
+    const frameDurations = []; // number[] — seconds each frame should be held in the video
     const dpr = window.devicePixelRatio || 1;
     const w = previewEl.offsetWidth;
     const h = previewEl.offsetHeight;
-    const totalExpected = captureSteps.length * (1 + INDICATOR_HOLD_FRAMES);
 
-    log(`expecting ~${totalExpected} frames (${captureSteps.length} content + ${captureSteps.length * INDICATOR_HOLD_FRAMES} indicator hold)`);
+    // Estimate total frames for progress reporting.
+    // Indicator frame count varies per step, so this is approximate.
+    const avgIndicatorFrames = Math.round((MIN_INDICATOR_FRAMES + MAX_INDICATOR_FRAMES) / 2);
+    const totalExpected = captureSteps.length * (1 + avgIndicatorFrames);
+
+    log(`estimated ~${totalExpected} frames (${captureSteps.length} content + ~${avgIndicatorFrames} indicator avg per step)`);
 
     animator.afterStepRef.current = async (stepIndex) => {
       const stepStart = performance.now();
@@ -107,39 +164,61 @@ export function captureFrames({ previewEl, animatorRef, steps, onProgress }) {
       const rafMs = (performance.now() - rafStart).toFixed(0);
 
       if (isVisual) {
-        // Content frame: animations at rest position
+        // ── Content frame: animations at rest position ──────────────────────
         pauseAnimations(previewEl);
         seekAnimations(previewEl, CONTENT_SEEK_MS);
 
         const h2cStart = performance.now();
-        const contentFrame = await captureEl(previewEl, dpr, w, h);
+        const contentCanvas = await captureEl(previewEl, dpr, w, h);
         const h2cMs = (performance.now() - h2cStart).toFixed(0);
 
+        // Immediately serialise → Blob URL, release canvas pixel buffer.
+        const contentUrl = await canvasToBlobUrl(contentCanvas);
         resumeAnimations(previewEl);
-        frames.push(contentFrame);
+
+        // Content frame holds for the full inter-step duration.
+        // Encoder uses this directly — no need to re-derive from timestamps.
+        const stepDurationMs = timing
+          ? computeStepDurationMs(steps, stepIndex, timing)
+          : 700;
+        const contentHoldSec = Math.min(Math.max(stepDurationMs / 1000, 0.05), 60);
+
+        blobUrls.push(contentUrl);
         capturedSteps.push(step);
-        onProgress?.(frames.length / totalExpected, { kind: step.kind, h2cMs: +h2cMs, rafMs: +rafMs, isIndicator: false });
+        frameDurations.push(contentHoldSec);
+        onProgress?.(blobUrls.length / totalExpected, {
+          kind: step.kind, h2cMs: +h2cMs, rafMs: +rafMs, isIndicator: false,
+        });
 
-        log(`step ${stepIndex} (${step.kind}): rAF=${rafMs}ms html2canvas=${h2cMs}ms [frame ${frames.length}/${totalExpected}]`);
+        log(`step ${stepIndex} (${step.kind}): rAF=${rafMs}ms html2canvas=${h2cMs}ms hold=${contentHoldSec.toFixed(3)}s [frame ${blobUrls.length}/${totalExpected}]`);
 
-        // Indicator frames: seek animations to peak pulse state
+        // ── Indicator frames: animate through the pulse cycle ───────────────
         if (!isLast) {
+          const nFrames = indicatorFrameCount(stepDurationMs);
+          const indicatorHoldSec = INDICATOR_FRAME_MS / 1000;
+          const indicatorStart = performance.now();
+
           pauseAnimations(previewEl);
-          seekAnimations(previewEl, INDICATOR_SEEK_MS);
 
-          const ih2cStart = performance.now();
-          const indicatorFrame = await captureEl(previewEl, dpr, w, h);
-          const ih2cMs = (performance.now() - ih2cStart).toFixed(0);
+          for (let i = 0; i < nFrames; i++) {
+            // Loop through the 1400ms CSS animation cycle at INDICATOR_FRAME_MS steps
+            const seekMs = (i * INDICATOR_FRAME_MS) % INDICATOR_CYCLE_MS;
+            seekAnimations(previewEl, seekMs);
 
-          resumeAnimations(previewEl);
+            const ic = await captureEl(previewEl, dpr, w, h);
+            const iUrl = await canvasToBlobUrl(ic);
 
-          for (let i = 0; i < INDICATOR_HOLD_FRAMES; i++) {
-            frames.push(indicatorFrame);
+            blobUrls.push(iUrl);
             capturedSteps.push(step);
-            onProgress?.(frames.length / totalExpected, { kind: step.kind, h2cMs: +ih2cMs, rafMs: 0, isIndicator: true });
+            frameDurations.push(indicatorHoldSec);
+            onProgress?.(blobUrls.length / totalExpected, {
+              kind: step.kind, h2cMs: 0, rafMs: 0, isIndicator: true,
+            });
           }
 
-          log(`step ${stepIndex} indicator: html2canvas=${ih2cMs}ms [frames ${frames.length - INDICATOR_HOLD_FRAMES + 1}-${frames.length}/${totalExpected}]`);
+          resumeAnimations(previewEl);
+          const indicatorMs = (performance.now() - indicatorStart).toFixed(0);
+          log(`step ${stepIndex} indicator: ${nFrames} frames @ ${INDICATOR_FRAME_MS}ms each (${stepDurationMs.toFixed(0)}ms gap) in ${indicatorMs}ms [frames to ${blobUrls.length}/${totalExpected}]`);
         }
       } else {
         log(`step ${stepIndex} (${step?.kind ?? 'unknown'}) SKIPPED (non-visual), rAF=${rafMs}ms`);
@@ -150,10 +229,15 @@ export function captureFrames({ previewEl, animatorRef, steps, onProgress }) {
 
       if (isLast) {
         const totalMs = (performance.now() - exportStart).toFixed(0);
-        log(`DONE: ${frames.length} frames captured in ${totalMs}ms (${captureSteps.length} steps, avg ${(parseFloat(totalMs) / captureSteps.length).toFixed(0)}ms/step)`);
+        log(`DONE: ${blobUrls.length} frames captured in ${totalMs}ms (${captureSteps.length} steps, avg ${(parseFloat(totalMs) / captureSteps.length).toFixed(0)}ms/step)`);
         animator.afterStepRef.current = null;
         animator.pause();
-        resolve({ frames, steps: capturedSteps });
+        resolve({
+          frames: blobUrls,
+          steps: capturedSteps,
+          durations: frameDurations,
+          revokeAll: () => blobUrls.forEach(u => URL.revokeObjectURL(u)),
+        });
       }
     };
 

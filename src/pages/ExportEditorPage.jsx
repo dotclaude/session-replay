@@ -710,7 +710,7 @@ function ExportProgressModal({
           <div style={{ paddingLeft: 8 }}>
             <LogRow label="Progress" value={captureTotal > 0 ? `${Math.min(captureFrame, captureTotal)} / ${captureTotal} frames  (${Math.round(captureProgress * 100)}%)` : '—'} />
             <LogRow label="Current step" value={captureStepInfo?.kind ?? '—'} />
-            <LogRow label="Frame type" value={captureStepInfo ? (captureStepInfo.isIndicator ? 'indicator hold (×2)' : 'content') : '—'} dim />
+            <LogRow label="Frame type" value={captureStepInfo ? (captureStepInfo.isIndicator ? 'indicator (animated pulse)' : 'content') : '—'} dim />
             <LogRow label="html2canvas" value={captureStepInfo?.h2cMs != null ? `${captureStepInfo.h2cMs}ms` : '—'} dim />
             <LogRow label="rAF wait" value={captureStepInfo?.rafMs != null ? `${captureStepInfo.rafMs}ms` : '—'} dim />
             <div style={{ marginTop: 6 }}>
@@ -945,15 +945,18 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       const preview = livePreviewRef.current;
       if (!preview?.previewEl) throw new Error('Preview not ready — please wait for the session to load.');
 
-      const INDICATOR_HOLD = 2;
+      // Estimate total frame count for progress display.
+      // Animated indicator generates up to 32 frames per step — use avg of 8 as estimate.
       const visualSteps = preview.steps.filter(s => !['session-header','local-command-output','queue-op'].includes(s.kind));
-      const totalExpected = visualSteps.length * (1 + INDICATOR_HOLD);
+      const totalExpected = visualSteps.length * (1 + 8);
       setCaptureTotal(totalExpected);
 
-      const { frames, steps: capturedSteps } = await captureFrames({
+      const timing = preview.timing;
+      const { frames, steps: capturedSteps, durations: capturedDurations, revokeAll } = await captureFrames({
         previewEl: preview.previewEl,
         steps: preview.steps,
         animatorRef: preview.animator,
+        timing,
         onProgress: (p, meta) => {
           if (cancelRef.current) return;
           const frameIdx = Math.round(p * totalExpected);
@@ -963,10 +966,8 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
         },
       });
 
-      if (cancelRef.current) { setPhase('idle'); return; }
-      if (!frames.length) throw new Error('No frames captured — clip range may contain only skipped steps.');
-
-      const timing = preview.timing;
+      if (cancelRef.current) { revokeAll?.(); setPhase('idle'); return; }
+      if (!frames.length) { revokeAll?.(); throw new Error('No frames captured — clip range may contain only skipped steps.'); }
       setEncodeFrameCount(frames.length);
       setPhase('encoding');
       setEncodeElapsed(0);
@@ -993,12 +994,17 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       lastProgressRef.current = Date.now();
 
       let blob;
-      if (format === 'gif') {
-        blob = await encodeGif({ frames, steps: capturedSteps, timing, quality: gifQuality, onProgress: handleEncodeProgress });
-      } else if (format === 'mp4') {
-        blob = await encodeMp4({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: handleEncodeProgress });
-      } else {
-        blob = await encodeWebm({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: handleEncodeProgress });
+      try {
+        if (format === 'gif') {
+          blob = await encodeGif({ frames, steps: capturedSteps, durations: capturedDurations, timing, quality: gifQuality, onProgress: handleEncodeProgress });
+        } else if (format === 'mp4') {
+          blob = await encodeMp4({ frames, steps: capturedSteps, durations: capturedDurations, timing, width: vidWidth, onProgress: handleEncodeProgress });
+        } else {
+          blob = await encodeWebm({ frames, steps: capturedSteps, durations: capturedDurations, timing, width: vidWidth, onProgress: handleEncodeProgress });
+        }
+      } finally {
+        // Release all Blob URLs now that ffmpeg has read the frames into VFS.
+        revokeAll?.();
       }
 
       if (cancelRef.current) { setPhase('idle'); return; }
