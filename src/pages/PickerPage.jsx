@@ -307,7 +307,7 @@ export default function PickerPage() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
 
       <ConnectSessionsModal
-        open={status === 'needs-connect' && supportsFileSystemAccess()}
+        open={(status === 'needs-connect' || status === 'refreshing') && supportsFileSystemAccess() && projects.length === 0}
         busy={busy}
         error={error}
         onConnect={connect}
