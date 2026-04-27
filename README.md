@@ -2,10 +2,10 @@
 
 A standalone React app that reads your `~/.claude` session history and replays
 any conversation as a beautiful, scrubbable animation. Pick a project, pick a
-session, hit Play. Export clips as GIF, MP4, WebM, or JSON. Compose multi-clip
-timelines in the visual editor and annotate them before exporting.
+session, hit Play. Export clips as GIF, MP4, or WebM. Compose multi-clip
+timelines in the export editor before exporting.
 
-**Now runs entirely in your browser** — no server required. Deployable to GitHub Pages.
+**Runs entirely in your browser** — no server required. Deployable to GitHub Pages.
 
 ---
 
@@ -13,8 +13,8 @@ timelines in the visual editor and annotate them before exporting.
 
 ```bash
 cd ~/projects/session-replay
-npm install
-npm run dev
+yarn install
+yarn dev
 ```
 
 Open http://localhost:5174. On first launch, you'll be prompted to select your `.claude` directory.
@@ -66,8 +66,6 @@ Open http://localhost:5174. On first launch, you'll be prompted to select your `
         │
         ▼
   src/lib/editor/
-    buildComposition.js         maps steps → draggable clips with timing metadata
-    compositionReducer.js       state machine for clip add/move/resize/delete
     kindColors.js               step-kind → color token map
         │
         ▼
@@ -101,7 +99,7 @@ Open http://localhost:5174. On first launch, you'll be prompted to select your `
 
 ### Why client-only instead of a bridge server?
 
-The app now uses the **File System Access API** to read your `.claude` directory directly in the browser. This means:
+The app uses the **File System Access API** to read your `.claude` directory directly in the browser. This means:
 
 - **No server setup** — just open the page
 - **GitHub Pages compatible** — deploy anywhere static files are served
@@ -134,7 +132,7 @@ their `tool_use` block during the assistant-message pass. O(n) total.
 
 ### Why WASM ffmpeg instead of a bridge endpoint?
 
-Video export now uses `@ffmpeg/ffmpeg` (WebAssembly) to encode MP4/WebM/GIF entirely in the browser. This removes the bridge server dependency. The WASM build is slower than system ffmpeg (~5-10x) but works offline and requires no installation.
+Video export uses `@ffmpeg/ffmpeg` (WebAssembly) to encode MP4/WebM/GIF entirely in the browser. This removes any server dependency. The WASM build is slower than system ffmpeg (~5-10x) but works offline and requires no installation.
 
 ---
 
@@ -143,11 +141,14 @@ Video export now uses `@ffmpeg/ffmpeg` (WebAssembly) to encode MP4/WebM/GIF enti
 ```
 session-replay/
 ├── public/
+│   ├── favicon.svg            App icon
+│   ├── icons.svg              SVG icon proposals sheet
 │   └── gif.worker.js          gif.js web worker (copied by postinstall)
 ├── src/
 │   ├── main.jsx               React entry
-│   ├── App.jsx                Router (/ | /replay/:id | /export/:id | /editor/:id)
+│   ├── App.jsx                Router (/ | /replay/:sessionId | /replay/:sessionId/agent/:agentId | /export/:sessionId | /export/:sessionId/agent/:agentId)
 │   ├── app.css                Global tokens + animator control styles (WCAG 2.1 AA)
+│   ├── assets/                SVG icon proposals (icon-*.svg)
 │   ├── types/
 │   │   └── file-system-access.d.ts  Type definitions for File System Access API
 │   ├── lib/
@@ -178,16 +179,15 @@ session-replay/
 │   │   │   ├── buildFramePlan.js
 │   │   │   ├── captureFrames.js
 │   │   │   ├── renderFrameToCanvas.js
-│   │   │   └── encodeVideo.js        (now uses WASM ffmpeg)
+│   │   │   └── encodeVideo.js        (WASM ffmpeg)
 │   │   └── editor/
-│   │       ├── buildComposition.js
-│   │       ├── compositionReducer.js
 │   │       └── kindColors.js
 │   ├── pages/
-│   │   ├── PickerPage.jsx        Project → session selector (now reads from FS API)
-│   │   ├── ReplayPage.jsx        Loads session from IndexedDB cache
-│   │   ├── ExportEditorPage.jsx  Clip editor + export UI
-│   │   └── EditorPage.jsx        Visual composition timeline editor
+│   │   ├── PickerPage.jsx        Project → session selector
+│   │   ├── ReplayPage.jsx        Session replay with scrubber and export controls
+│   │   ├── AgentReplayPage.jsx   Sub-agent session replay
+│   │   ├── ExportEditorPage.jsx  Multi-clip export editor
+│   │   └── AgentExportPage.jsx   Sub-agent export editor
 │   └── components/
 │       ├── picker/
 │       │   ├── ProjectCard.jsx
@@ -199,7 +199,6 @@ session-replay/
 │       │   ├── ClipControls.jsx   Set in/out points for export
 │       │   ├── ExportPanel.jsx    Format/quality picker + encode trigger
 │       │   ├── FilterBar.jsx      Toggle step-kind visibility
-│       │   ├── Minimap.jsx        Color-coded step overview strip
 │       │   ├── SearchBar.jsx      Full-text search across all steps
 │       │   ├── SessionClock.jsx   Wall-clock elapsed time display
 │       │   └── StatsPanel.jsx     Token counts + estimated cost
@@ -227,19 +226,7 @@ session-replay/
 │       │   ├── TurnSummary.jsx
 │       │   ├── LocalCommand.jsx
 │       │   └── PRBadge.jsx
-│       └── editor/
-│           ├── EditorShell.jsx
-│           ├── EditorHeader.jsx
-│           ├── EditorCanvas.jsx
-│           ├── EditorTimeline.jsx
-│           ├── TimelineRuler.jsx
-│           ├── TimelineScrubber.jsx
-│           ├── TimelineLayer.jsx
-│           ├── TimelineClip.jsx
-│           ├── EditorProperties.jsx
-│           ├── AnnotationLayer.jsx
-│           ├── TextAnnotation.jsx
-│           └── ExportModalEditor.jsx
+│       └── ThemeToggle.jsx
 ├── index.html
 ├── vite.config.js             Port 5174, COOP/COEP headers for WASM
 ├── package.json
@@ -255,7 +242,7 @@ When you first open the app, a modal appears with instructions:
 1. **Click "Select .claude folder"** — opens your native file picker
 2. **Show hidden folders:**
    - **macOS:** Press `Cmd + Shift + .` in the picker
-   - **Linux:** Press `Ctrl + H` in the picker  
+   - **Linux:** Press `Ctrl + H` in the picker
    - **Windows:** Enable `View → Hidden items` in File Explorer
 3. **Select your `.claude` directory** (usually `~/.claude`)
    - Or select your home folder if it contains `.claude` (the app will auto-detect it)
@@ -270,29 +257,16 @@ On subsequent visits, the app reuses the saved handle (with a permission check).
 
 The app supports all three Claude Code session storage formats:
 
-- **Format A** (current): Direct `.jsonl` files in project root  
+- **Format A** (current): Direct `.jsonl` files in project root
   `~/.claude/projects/<proj>/<uuid>.jsonl`
 
-- **Format B** (legacy): `sessions-index.json` with file references  
+- **Format B** (legacy): `sessions-index.json` with file references
   `~/.claude/projects/<proj>/sessions-index.json`
 
-- **Format C** (sub-agents): UUID subdirectories with agent sessions  
+- **Format C** (sub-agents): UUID subdirectories with agent sessions
   `~/.claude/projects/<proj>/<uuid>/subagents/agent-*.jsonl`
 
 Orphaned sessions (parent JSONL missing but sub-agents present) are synthesized with metadata extracted from the first sub-agent file.
-
----
-
-## Composition editor
-
-`EditorPage` (`/editor/:id`) is a visual timeline editor layered on top of the
-replay engine. Steps are converted to draggable clips via `buildComposition.js`,
-and all mutations go through `compositionReducer` — a pure reducer with actions
-for add, move, resize, split, and delete. The `AnnotationLayer` / `TextAnnotation`
-components let you overlay timestamped text callouts before exporting.
-
-Use `ExportModalEditor` (inside the editor) rather than `ExportPanel` (inside
-the replay) when you want to export a composed multi-clip timeline.
 
 ---
 
@@ -302,7 +276,7 @@ The UI targets **WCAG 2.1 AA** throughout:
 
 - All interactive elements have a visible 2px focus ring (2px offset).
 - Color palette maintains ≥ 3:1 contrast on text and borders.
-- Semantic HTML with ARIA labels on controls, stage cards, and the minimap.
+- Semantic HTML with ARIA labels on controls, stage cards, and the filter bar.
 - Full keyboard navigation: Space = play/pause, ←/→ = step, Home/End = jump.
 - Screen reader announcements on step-kind changes and search results.
 
@@ -339,9 +313,10 @@ capture.
 
 | Command | What it does |
 |---------|-------------|
-| `npm run dev` | Start Vite dev server (port 5174) |
-| `npm run build` | Production build to `dist/` |
-| `npm run preview` | Preview production build |
+| `yarn dev` | Start Vite dev server (port 5174) |
+| `yarn build` | Production build to `dist/` |
+| `yarn preview` | Preview production build |
+| `yarn lint` | Run ESLint |
 
 ---
 
@@ -349,7 +324,7 @@ capture.
 
 1. **Enable GitHub Pages** in repo settings → Pages → Source: GitHub Actions
 2. **Push to main** — the included `.github/workflows/deploy.yml` workflow runs automatically
-3. **Access your app** at `https://<username>.github.io/<repo-name>/`
+3. **Access your app** at `https://<username>.github.io/session-replay/`
 
 For a custom domain:
 1. Add `CNAME` file to `public/` with your domain
@@ -412,33 +387,20 @@ This app is **client-only** and cannot access your filesystem without explicit p
 ### "SharedArrayBuffer is not defined"
 - WASM ffmpeg requires COOP/COEP headers (configured in `vite.config.js`)
 - If deploying to a host other than GitHub Pages, ensure these headers are set:
-  ```
-  Cross-Origin-Opener-Policy: same-origin
-  Cross-Origin-Embedder-Policy: require-corp
-  ```
 
----
-
-## Migration from bridge-based version
-
-If you were using the bridge server (pre-v0.2.0):
-
-1. **No bridge required** — remove `bridge/server.js` and related scripts
-2. **First run** — grant directory access via the modal
-3. **Data persists** — sessions are cached in IndexedDB, no re-reading on reload
-4. **Video export** — now uses WASM ffmpeg (slower but no server needed)
-5. **Deployment** — can now host on GitHub Pages or any static host
-
-The parser, animator, and stage components are unchanged — only the data loading layer was refactored.
+```
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Embedder-Policy: require-corp
+```
 
 ---
 
 ## Requirements
 
-- Node 18+
+- Node 20+
+- Yarn 1.22+
 - Modern browser with File System Access API support (Chrome/Edge/Brave recommended)
 - `~/.claude/projects/` directory with Claude Code session files
-- Claude Code 2.x session format (tested on 2.1.x)
 
 ---
 
