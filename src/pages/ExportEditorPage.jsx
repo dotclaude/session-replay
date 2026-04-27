@@ -1,14 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { parseSession } from '../lib/parser/parseSession.js';
 import { buildSteps } from '../lib/parser/buildSteps.js';
-import { buildFramePlan } from '../lib/export/buildFramePlan.js';
 import { captureFrames } from '../lib/export/captureFrames.js';
 import { encodeGif, encodeMp4, encodeWebm } from '../lib/export/encodeVideo.js';
 import StageRenderer from '../components/stages/StageRenderer.jsx';
+import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import { kindColor } from '../lib/editor/kindColors.js';
 import { useTheme } from '../hooks/useTheme.js';
+import { useTimedAnimator } from '../lib/stepAnimator/useTimedAnimator.js';
+import { getProcessingMessage } from '../lib/utils/processingMessages.js';
+import { loadSessionsCache } from '../lib/sessionsStore.ts';
+import { getSavedSessionsDirectory } from '../lib/fsAccess.ts';
+import { loadFullSession } from '../lib/progressiveSessionReader.ts';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -18,12 +23,18 @@ function fmt(ms) {
   return m > 0 ? `${m}m ${s % 60}s` : `${s}s`;
 }
 
-// Removed KIND_COLORS - now using kindColor() function for theme-aware colors
+const SKIP_KINDS = new Set(['session-header', 'local-command-output', 'queue-op']);
 
-// ─── Timeline ─────────────────────────────────────────────────────────────────
+const RENDER_MODES = [
+  { id: 'scroll',  label: 'Scroll',  desc: 'History accumulates, scrolls to newest' },
+  { id: 'focused', label: 'Focused', desc: 'Current step large, 2 prior steps dimmed above' },
+  { id: 'stream',  label: 'Stream',  desc: 'One step at a time fills the frame' },
+];
 
-function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
-  const theme = useTheme(); // Force re-render on theme change
+// ─── Timeline strip ───────────────────────────────────────────────────────────
+
+function Timeline({ steps, clipIn, clipOut, currentStep }) {
+  useTheme();
   const svgRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const total = steps.length;
@@ -39,10 +50,9 @@ function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
     <div style={{ position: 'relative' }}>
       <svg
         ref={svgRef}
-        style={{ display: 'block', width: '100%', height: 40, cursor: 'crosshair' }}
+        style={{ display: 'block', width: '100%', height: 40, cursor: 'default' }}
         viewBox={`0 0 ${total} 1`}
         preserveAspectRatio="none"
-        onClick={e => onPreviewStep(getIndex(e))}
         onMouseMove={e => {
           const i = getIndex(e);
           setTooltip({ x: e.clientX - svgRef.current.getBoundingClientRect().left, i, desc: steps[i]?.description });
@@ -64,7 +74,7 @@ function Timeline({ steps, clipIn, clipOut, previewStep, onPreviewStep }) {
         )}
         {clipIn != null && <line x1={clipIn} y1={0} x2={clipIn} y2={1} stroke="#58a6ff" strokeWidth={0.8} />}
         {clipOut != null && <line x1={clipOut + 1} y1={0} x2={clipOut + 1} y2={1} stroke="#58a6ff" strokeWidth={0.8} />}
-        <line x1={previewStep + 0.5} y1={0} x2={previewStep + 0.5} y2={1} stroke="#f0f6fc" strokeWidth={0.5} opacity={0.8} />
+        <line x1={currentStep + 0.5} y1={0} x2={currentStep + 0.5} y2={1} stroke="#f0f6fc" strokeWidth={0.5} opacity={0.8} />
       </svg>
       {tooltip && (
         <div style={{
@@ -108,22 +118,252 @@ function SliderSetting({ label, value, min, max, step, onChange }) {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Live animated preview ────────────────────────────────────────────────────
 
-export default function ExportEditorPage() {
-  const { sessionId } = useParams();
+const LivePreview = forwardRef(function LivePreview({ stepsRef, clipIn, clipOut, scale, renderMode }, ref) {
+  const [currentEvent, setCurrentEvent] = useState(null);
+  const [history, setHistory] = useState([]);
+  const previewDomRef = useRef(null);
+
+  const executeStep = useCallback((step) => {
+    if (!step || SKIP_KINDS.has(step.kind)) return;
+    setCurrentEvent(step);
+    setHistory(prev => {
+      if (prev.find(s => s.index === step.index)) return prev;
+      return [...prev, step];
+    });
+  }, []);
+
+  const resetState = useCallback(() => {
+    setCurrentEvent(null);
+    setHistory([]);
+  }, []);
+
+  const clippedStepsRef = useRef([]);
+  useEffect(() => {
+    if (!stepsRef.current.length) return;
+    const lo = clipIn ?? 0;
+    const hi = clipOut ?? stepsRef.current.length - 1;
+    clippedStepsRef.current = stepsRef.current.slice(lo, hi + 1);
+    resetState();
+    if (clippedStepsRef.current.length > 0) executeStep(clippedStepsRef.current[0]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipIn, clipOut, stepsRef.current.length]);
+
+  const animator = useTimedAnimator({
+    steps: clippedStepsRef,
+    executeStep,
+    resetState,
+    initialDuration: 700,
+    initialMode: 'realtime',
+  });
+
+  // Expose capture API to ExportShell.
+  useImperativeHandle(ref, () => ({
+    get previewEl() { return previewDomRef.current; },
+    get steps() { return clippedStepsRef.current; },
+    get timing() {
+      return {
+        mode: animator.mode,
+        animationDuration: animator.animationDuration,
+        playbackSpeed: animator.playbackSpeed,
+        compressionFactor: animator.compressionFactor,
+      };
+    },
+    animator,
+    scrubTo: animator.scrubTo,
+  }), [animator]);
+
+  const filteredHistory = useMemo(() => history.filter(s => !SKIP_KINDS.has(s.kind)), [history]);
+
+  // After each render, scroll the preview frame to the bottom.
+  // previewDomRef is overflow:scroll but user scroll is blocked via onWheel/onTouchMove.
+  useEffect(() => {
+    if (!previewDomRef.current) return;
+    previewDomRef.current.scrollTop = previewDomRef.current.scrollHeight;
+  });
+
+  const showIndicator = animator.isPlaying && currentEvent &&
+    currentEvent.index === filteredHistory[filteredHistory.length - 1]?.index;
+  const nextStep = clippedStepsRef.current[animator.currentStep + 1];
+  const indicatorMsg = showIndicator && nextStep ? getProcessingMessage(nextStep.kind) : null;
+
+  const displayHistory = renderMode === 'stream'
+    ? filteredHistory.slice(-1)
+    : renderMode === 'focused'
+    ? filteredHistory.slice(-3)
+    : filteredHistory;
+
+  const scaledW = Math.round(900 * scale);
+  const scaledH = Math.round(600 * scale);
+  const total = animator.totalSteps;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+
+      {/* Transport bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexShrink: 0 }}>
+        <button
+          onClick={animator.isPlaying ? animator.pause : animator.play}
+          style={{ padding: '4px 14px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', color: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600, flexShrink: 0 }}
+        >
+          {animator.isPlaying ? '⏸' : '▶'}
+        </button>
+        <button
+          onClick={animator.reset}
+          style={{ padding: '4px 8px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12, flexShrink: 0 }}
+        >
+          ↺
+        </button>
+
+        {/* Trackbar */}
+        <input
+          type="range"
+          min={0}
+          max={Math.max(0, total - 1)}
+          value={animator.currentStep}
+          onChange={e => animator.scrubTo(+e.target.value)}
+          style={{ flex: 1, accentColor: 'var(--accent)', cursor: 'pointer' }}
+        />
+
+        <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', flexShrink: 0, minWidth: 52, textAlign: 'right' }}>
+          {animator.currentStep + 1}/{total}
+        </span>
+      </div>
+
+      {/* Speed controls row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexShrink: 0 }}>
+        <select
+          value={animator.mode}
+          onChange={e => animator.setMode(e.target.value)}
+          style={{ padding: '2px 6px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-secondary)', fontSize: 11 }}
+        >
+          <option value="realtime">Real-time</option>
+          <option value="fixed">Fixed</option>
+          <option value="compressed">Compressed</option>
+        </select>
+
+        {animator.mode === 'realtime' && (
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[0.25, 0.5, 1, 2, 4, 8].map(v => (
+              <button key={v} onClick={() => animator.setPlaybackSpeed(v)}
+                style={{ padding: '2px 6px', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', background: animator.playbackSpeed === v ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${animator.playbackSpeed === v ? 'var(--accent)' : 'var(--border)'}`, color: animator.playbackSpeed === v ? 'white' : 'var(--text-muted)' }}>
+                {v}×
+              </button>
+            ))}
+          </div>
+        )}
+        {animator.mode === 'fixed' && (
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[200, 500, 700, 1000, 2000].map(v => (
+              <button key={v} onClick={() => animator.setAnimationDuration(v)}
+                style={{ padding: '2px 6px', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', background: animator.animationDuration === v ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${animator.animationDuration === v ? 'var(--accent)' : 'var(--border)'}`, color: animator.animationDuration === v ? 'white' : 'var(--text-muted)' }}>
+                {v < 1000 ? `${v}ms` : `${v/1000}s`}
+              </button>
+            ))}
+          </div>
+        )}
+        {animator.mode === 'compressed' && (
+          <div style={{ display: 'flex', gap: 3 }}>
+            {[5, 10, 25, 50].map(v => (
+              <button key={v} onClick={() => animator.setCompressionFactor(v)}
+                style={{ padding: '2px 6px', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', fontFamily: 'var(--font-mono)', background: animator.compressionFactor === v ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${animator.compressionFactor === v ? 'var(--accent)' : 'var(--border)'}`, color: animator.compressionFactor === v ? 'white' : 'var(--text-muted)' }}>
+                ×{v}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Scaled preview viewport — fixed size, no scroll, clips exactly like the video frame */}
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-0)' }}>
+        <div style={{ width: scaledW, height: scaledH, flexShrink: 0, overflow: 'hidden', border: '1px solid var(--border)', borderRadius: 4 }}>
+          {/* Inner 900×600 — scaled down, scrolls programmatically, user scroll blocked */}
+          <div
+            ref={previewDomRef}
+            onWheel={e => e.preventDefault()}
+            onTouchMove={e => e.preventDefault()}
+            style={{
+              width: 900,
+              height: 600,
+              transformOrigin: 'top left',
+              transform: `scale(${scale})`,
+              overflowY: 'scroll',
+              overflowX: 'hidden',
+              background: 'var(--bg-0)',
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}
+            className="preview-frame"
+          >
+            <div style={{ padding: '12px 8px 16px' }}>
+              {displayHistory.map((step) => (
+                <StageRenderer
+                  key={step.index}
+                  step={step}
+                  isCurrent={step.index === currentEvent?.index}
+                  isSearchMatch={false}
+                />
+              ))}
+              <ProcessingIndicator visible={!!indicatorMsg} message={indicatorMsg} />
+            </div>
+          </div>
+          <style>{`
+            .preview-frame::-webkit-scrollbar { display: none; }
+          `}</style>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ─── Video preview modal ──────────────────────────────────────────────────────
+
+function VideoPreviewModal({ url, name, format, onClose }) {
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+    >
+      <div style={{ background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: '0 32px 80px rgba(0,0,0,0.8)', overflow: 'hidden', maxWidth: '90vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, fontFamily: 'var(--font-mono)' }}>{name}</span>
+          <a href={url} download={name}
+            style={{ padding: '5px 14px', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+            ↓ Download
+          </a>
+          <button onClick={onClose}
+            style={{ width: 26, height: 26, background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            ✕
+          </button>
+        </div>
+        {/* Media */}
+        <div style={{ flex: 1, overflow: 'hidden', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {format === 'gif' ? (
+            <img src={url} alt={name} style={{ maxWidth: '85vw', maxHeight: '80vh', objectFit: 'contain', display: 'block' }} />
+          ) : (
+            <video src={url} controls style={{ maxWidth: '85vw', maxHeight: '80vh', display: 'block' }} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Export shell (shared by session and agent export pages) ──────────────────
+
+export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix }) {
   const navigate = useNavigate();
+  const stepsRef = useRef(initialSteps ?? []);
+  const livePreviewRef = useRef(null);
 
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
-  const stepsRef = useRef([]);
-
-  const [clipIn, setClipIn] = useState(null);
-  const [clipOut, setClipOut] = useState(null);
-  const [previewStep, setPreviewStep] = useState(0);
+  const [clipIn, setClipIn] = useState(() => 0);
+  const [clipOut, setClipOut] = useState(() => Math.max(0, (initialSteps?.length ?? 1) - 1));
+  const [scale, setScale] = useState(1);
+  const [renderMode, setRenderMode] = useState('scroll');
 
   const [format, setFormat] = useState('mp4');
-  const [fps, setFps] = useState(10);
   const [gifQuality, setGifQuality] = useState(10);
   const [vidWidth, setVidWidth] = useState(900);
   const [phase, setPhase] = useState('idle');
@@ -132,35 +372,21 @@ export default function ExportEditorPage() {
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [downloadName, setDownloadName] = useState('');
   const [exportError, setExportError] = useState(null);
+  const [showPreview, setShowPreview] = useState(false);
 
+  // Keep stepsRef in sync if steps prop changes (shouldn't happen after mount, but be safe)
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/sessions/${sessionId}`)
-      .then(r => {
-        if (!r.ok) throw new Error(r.status === 404 ? 'Session not found' : `Server error ${r.status}`);
-        return r.json();
-      })
-      .then(lines => {
-        if (!Array.isArray(lines) || lines.length === 0) throw new Error('Session is empty');
-        const events = parseSession(lines);
-        const steps = buildSteps(events);
-        stepsRef.current = steps;
-        setClipIn(0);
-        setClipOut(steps.length - 1);
-        setPreviewStep(0);
-        setLoading(false);
-      })
-      .catch(e => { setLoadError(e.message); setLoading(false); });
-  }, [sessionId]);
+    if (initialSteps) {
+      stepsRef.current = initialSteps;
+      setClipIn(0);
+      setClipOut(initialSteps.length - 1);
+    }
+  }, [initialSteps]);
 
   const steps = stepsRef.current;
   const hasClip = clipIn != null && clipOut != null && clipIn <= clipOut;
   const clipLength = hasClip ? clipOut - clipIn + 1 : 0;
-
-  const framePlan = useMemo(
-    () => hasClip ? buildFramePlan(steps, clipIn, clipOut) : [],
-    [steps, clipIn, clipOut, hasClip]
-  );
+  const totalSteps = steps.length;
 
   const estimatedDuration = useMemo(() => {
     if (!hasClip || !steps.length) return 0;
@@ -178,53 +404,41 @@ export default function ExportEditorPage() {
     setDownloadUrl(null);
 
     try {
-      if (format === 'json') {
-        const blob = new Blob([JSON.stringify(steps.slice(clipIn, clipOut + 1), null, 2)], { type: 'application/json' });
-        setDownloadUrl(URL.createObjectURL(blob));
-        setDownloadName(`session-${sessionId.slice(0, 8)}-${clipIn}-${clipOut}.json`);
-        setPhase('done');
-        return;
-      }
+      const preview = livePreviewRef.current;
+      if (!preview?.previewEl) throw new Error('Preview not ready — please wait for the session to load.');
 
-      const { frames } = await captureFrames({
-        steps, clipIn, clipOut,
+      const { frames, steps: capturedSteps } = await captureFrames({
+        previewEl: preview.previewEl,
+        steps: preview.steps,
+        animatorRef: preview.animator,
         onProgress: p => setCaptureProgress(p),
       });
 
+      if (!frames.length) throw new Error('No frames captured — clip range may contain only skipped steps.');
+
+      const timing = preview.timing;
       setPhase('encoding');
 
       let blob;
       if (format === 'gif') {
-        blob = await encodeGif({ frames, fps, quality: gifQuality, onProgress: setEncodeProgress });
+        blob = await encodeGif({ frames, steps: capturedSteps, timing, quality: gifQuality, onProgress: setEncodeProgress });
       } else if (format === 'mp4') {
-        blob = await encodeMp4({ frames, fps, width: vidWidth, onProgress: setEncodeProgress });
+        blob = await encodeMp4({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: setEncodeProgress });
       } else {
-        blob = await encodeWebm({ frames, fps, width: vidWidth, onProgress: setEncodeProgress });
+        blob = await encodeWebm({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: setEncodeProgress });
       }
 
-      setDownloadUrl(URL.createObjectURL(blob));
-      setDownloadName(`session-${sessionId.slice(0, 8)}-${clipIn}-${clipOut}.${format}`);
+      const url = URL.createObjectURL(blob);
+      setDownloadUrl(url);
+      setDownloadName(`${filePrefix ?? 'session'}-${clipIn}-${clipOut}.${format}`);
       setPhase('done');
+      setShowPreview(true);
     } catch (e) {
       setExportError(e.message || String(e));
       setPhase('error');
     }
-  }, [hasClip, format, steps, clipIn, clipOut, fps, gifQuality, vidWidth, sessionId]);
+  }, [hasClip, format, gifQuality, vidWidth, filePrefix]);
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
-      Loading session…
-    </div>
-  );
-
-  if (loadError) return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, color: 'var(--red)' }}>
-      <div>{loadError}</div>
-      <button onClick={() => navigate(-1)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>← Back</button>
-    </div>
-  );
-
-  const totalSteps = steps.length;
   const isExporting = phase === 'capturing' || phase === 'encoding';
   const overallProgress = phase === 'capturing' ? captureProgress * 0.7
     : phase === 'encoding' ? 0.7 + encodeProgress * 0.3
@@ -233,15 +447,24 @@ export default function ExportEditorPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
 
+      {showPreview && downloadUrl && (
+        <VideoPreviewModal
+          url={downloadUrl}
+          name={downloadName}
+          format={format}
+          onClose={() => setShowPreview(false)}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 16px', background: 'var(--bg-1)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-        <button onClick={() => navigate(`/replay/${sessionId}`)}
+        <button onClick={() => backTo ? navigate(backTo) : navigate(-1)}
           style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 16, padding: '2px 4px' }}>
           ←
         </button>
         <div>
-          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Animation Editor</div>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{sessionId.slice(0, 16)}</div>
+          <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>Export</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>{sessionId?.slice(0, 16)}</div>
         </div>
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}>{totalSteps} steps</div>
         <ThemeToggle />
@@ -250,27 +473,35 @@ export default function ExportEditorPage() {
       {/* Body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
-        {/* Left panel — timeline + controls */}
+        {/* Left panel — controls */}
         <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
           {/* Timeline */}
           <div style={{ padding: '14px 14px 8px', flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Timeline</div>
-            <Timeline steps={steps} clipIn={clipIn} clipOut={clipOut} previewStep={previewStep} onPreviewStep={setPreviewStep} />
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Clip Range</div>
+            <Timeline steps={steps} clipIn={clipIn} clipOut={clipOut} currentStep={clipIn ?? 0} />
             <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-              <button onClick={() => setClipIn(previewStep)}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: clipIn != null ? 'rgba(88,166,255,0.15)' : 'var(--bg-2)', border: `1px solid ${clipIn != null ? 'var(--accent)' : 'var(--border)'}`, color: clipIn != null ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                ⌊ In {clipIn != null ? `(${clipIn})` : ''}
+              <button onClick={() => setClipIn(Math.max(0, (clipIn ?? 0) - 1))}
+                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'rgba(88,166,255,0.15)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+                ⌊ In ({clipIn ?? 0})
               </button>
-              <button onClick={() => setClipOut(previewStep)}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: clipOut != null ? 'rgba(88,166,255,0.15)' : 'var(--bg-2)', border: `1px solid ${clipOut != null ? 'var(--accent)' : 'var(--border)'}`, color: clipOut != null ? 'var(--accent)' : 'var(--text-secondary)' }}>
-                Out {clipOut != null ? `(${clipOut})` : ''} ⌉
+              <button onClick={() => setClipOut(Math.min(totalSteps - 1, (clipOut ?? totalSteps - 1) + 1))}
+                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'rgba(88,166,255,0.15)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
+                Out ({clipOut ?? totalSteps - 1}) ⌉
               </button>
             </div>
-            <button onClick={() => { setClipIn(0); setClipOut(steps.length - 1); }}
-              style={{ width: '100%', marginTop: 4, padding: '3px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-              Full session
-            </button>
+            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
+              <button onClick={() => { setClipIn(0); setClipOut(steps.length - 1); }}
+                style={{ flex: 1, padding: '3px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
+                Full session
+              </button>
+              <button onClick={() => { const n = Math.max(0, (clipIn ?? 0) + 1); if (n < (clipOut ?? 0)) setClipIn(n); }}
+                style={{ padding: '3px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+                title="Trim first step">In+</button>
+              <button onClick={() => { const n = Math.max((clipIn ?? 0), (clipOut ?? totalSteps - 1) - 1); setClipOut(n); }}
+                style={{ padding: '3px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+                title="Trim last step">Out-</button>
+            </div>
           </div>
 
           {/* Clip stats */}
@@ -280,36 +511,20 @@ export default function ExportEditorPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
                 <StatRow label="Steps" value={`${clipIn}–${clipOut} (${clipLength})`} />
                 <StatRow label="Session time" value={fmt(estimatedDuration)} />
-                <StatRow label="Frames" value={framePlan.length} />
-                <StatRow label={`Duration @ ${fps}fps`} value={fmt(framePlan.length * (1000 / fps))} />
+                <StatRow label="Frames (captures)" value={clipLength} />
               </div>
             ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Click timeline to preview</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Set clip range above</div>
             )}
-          </div>
-
-          {/* Step scrubber */}
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Preview Step</div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => setPreviewStep(s => Math.max(0, s - 1))}
-                style={{ padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 12 }}>‹</button>
-              <input type="range" min={0} max={totalSteps - 1} value={previewStep}
-                onChange={e => setPreviewStep(+e.target.value)}
-                style={{ flex: 1, accentColor: 'var(--accent)' }} />
-              <button onClick={() => setPreviewStep(s => Math.min(totalSteps - 1, s + 1))}
-                style={{ padding: '3px 8px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 12 }}>›</button>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-              {previewStep + 1} / {totalSteps} — {steps[previewStep]?.description?.slice(0, 38)}
-            </div>
           </div>
 
           {/* Export settings */}
           <div style={{ padding: '12px 14px', flex: 1, overflowY: 'auto' }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>Export Settings</div>
-            <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
-              {[['mp4','MP4'],['webm','WebM'],['gif','GIF'],['json','JSON']].map(([val, label]) => (
+
+            {/* Format */}
+            <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
+              {[['mp4','MP4'],['webm','WebM'],['gif','GIF']].map(([val, label]) => (
                 <button key={val} onClick={() => setFormat(val)}
                   style={{ flex: 1, padding: '5px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: format === val ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${format === val ? 'var(--accent)' : 'var(--border)'}`, color: format === val ? 'white' : 'var(--text-secondary)' }}>
                   {label}
@@ -317,64 +532,84 @@ export default function ExportEditorPage() {
               ))}
             </div>
 
-            {format !== 'json' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                <SliderSetting label="FPS" value={fps} min={3} max={format === 'gif' ? 15 : 30} step={1} onChange={setFps} />
-                {format !== 'gif' && (
-                  <div>
-                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Width</div>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {[640, 900, 1280].map(w => (
-                        <button key={w} onClick={() => setVidWidth(w)}
-                          style={{ flex: 1, padding: '3px 0', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: vidWidth === w ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${vidWidth === w ? 'var(--accent)' : 'var(--border)'}`, color: vidWidth === w ? 'white' : 'var(--text-muted)' }}>
-                          {w}
-                        </button>
-                      ))}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+              {/* Render mode */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 6 }}>Render mode</div>
+                {RENDER_MODES.map(m => (
+                  <label key={m.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 6, cursor: 'pointer' }}>
+                    <input type="radio" name="renderMode" value={m.id} checked={renderMode === m.id}
+                      onChange={() => setRenderMode(m.id)}
+                      style={{ marginTop: 2, accentColor: 'var(--accent)', flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text-primary)', fontWeight: 600 }}>{m.label}</div>
+                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{m.desc}</div>
                     </div>
-                  </div>
-                )}
-                {format === 'gif' && (
-                  <SliderSetting label="Quality (lower = better)" value={gifQuality} min={1} max={20} step={1} onChange={setGifQuality} />
-                )}
-                <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-2)', padding: '7px 10px', borderRadius: 4, lineHeight: 1.5 }}>
-                  {format === 'gif' ? 'Browser-encoded via gif.js — no upload, no server.'
-                    : `Browser-encoded via ffmpeg.wasm — no upload, no server.${format === 'mp4' ? ' First run loads ~5MB WASM once.' : ''}`}
+                  </label>
+                ))}
+              </div>
+
+
+              {/* Scale */}
+              <div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Scale</div>
+                <div style={{ display: 'flex', gap: 4 }}>
+                  {[[0.5,'0.5×'],[0.75,'0.75×'],[1,'1×']].map(([v, lbl]) => (
+                    <button key={v} onClick={() => setScale(v)}
+                      style={{ flex: 1, padding: '3px 0', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: scale === v ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${scale === v ? 'var(--accent)' : 'var(--border)'}`, color: scale === v ? 'white' : 'var(--text-muted)' }}>
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                  Output: {vidWidth}×{Math.round(vidWidth * 2 / 3)}px
                 </div>
               </div>
-            )}
-            {format === 'json' && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-2)', padding: '7px 10px', borderRadius: 4 }}>
-                Exports raw step data. Useful for analysis or re-importing into the replay.
+
+              {format !== 'gif' && (
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4 }}>Width</div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[640, 900, 1280].map(w => (
+                      <button key={w} onClick={() => setVidWidth(w)}
+                        style={{ flex: 1, padding: '3px 0', fontSize: 10, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: vidWidth === w ? 'var(--accent-dim)' : 'var(--bg-2)', border: `1px solid ${vidWidth === w ? 'var(--accent)' : 'var(--border)'}`, color: vidWidth === w ? 'white' : 'var(--text-muted)' }}>
+                        {w}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {format === 'gif' && (
+                <SliderSetting label="Quality (lower = better)" value={gifQuality} min={1} max={20} step={1} onChange={setGifQuality} />
+              )}
+
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-2)', padding: '7px 10px', borderRadius: 4, lineHeight: 1.5 }}>
+                {format === 'gif' ? 'Browser-encoded via gif.js — no upload, no server.'
+                  : `Browser-encoded via ffmpeg.wasm — no upload, no server.${format === 'mp4' ? ' First run loads ~5MB WASM once.' : ''}`}
               </div>
-            )}
+            </div>
           </div>
         </div>
 
-        {/* Right panel — preview + export */}
+        {/* Right panel — live preview + export */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-0)' }}>
 
-          {/* Preview header */}
-          <div style={{ padding: '10px 16px 6px', borderBottom: '1px solid var(--border)', background: 'var(--bg-1)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>Preview</span>
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-              Step {previewStep + 1}: {steps[previewStep]?.description?.slice(0, 60)}
-            </span>
-            {hasClip && (previewStep < clipIn || previewStep > clipOut) && (
-              <span style={{ fontSize: 11, color: 'var(--yellow)', background: 'rgba(210,153,34,0.12)', padding: '2px 7px', borderRadius: 8, marginLeft: 'auto' }}>
-                outside clip
-              </span>
-            )}
-          </div>
-
-          {/* Live preview */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
-            {steps[previewStep] && (
-              <StageRenderer key={previewStep} step={steps[previewStep]} isCurrent={true} isSearchMatch={false} />
-            )}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <LivePreview
+              ref={livePreviewRef}
+              stepsRef={stepsRef}
+              clipIn={clipIn}
+              clipOut={clipOut}
+              scale={scale}
+              renderMode={renderMode}
+            />
           </div>
 
           {/* Export footer */}
           <div style={{ padding: '14px 16px', background: 'var(--bg-1)', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+
             {(isExporting || phase === 'done') && (
               <div style={{ marginBottom: 12 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
@@ -398,14 +633,18 @@ export default function ExportEditorPage() {
             )}
 
             <div style={{ display: 'flex', gap: 8 }}>
-              {downloadUrl ? (
+              {phase === 'done' && downloadUrl ? (
                 <>
+                  <button onClick={() => setShowPreview(true)}
+                    style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'white' }}>
+                    ▶ Preview {format.toUpperCase()}
+                  </button>
                   <a href={downloadUrl} download={downloadName}
-                    style={{ flex: 1, display: 'block', textAlign: 'center', padding: '9px', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-                    ↓ Download {downloadName}
+                    style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                    ↓ Download
                   </a>
-                  <button onClick={() => { setDownloadUrl(null); setPhase('idle'); }}
-                    style={{ padding: '9px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
+                  <button onClick={() => { setDownloadUrl(null); setPhase('idle'); setShowPreview(false); }}
+                    style={{ padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
                     Re-export
                   </button>
                 </>
@@ -413,8 +652,8 @@ export default function ExportEditorPage() {
                 <button onClick={doExport} disabled={!hasClip || isExporting}
                   style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, cursor: (!hasClip || isExporting) ? 'not-allowed' : 'pointer', borderRadius: 'var(--radius-sm)', background: (!hasClip || isExporting) ? 'var(--bg-3)' : 'var(--accent-dim)', border: `1px solid ${(!hasClip || isExporting) ? 'var(--border)' : 'var(--accent)'}`, color: (!hasClip || isExporting) ? 'var(--text-muted)' : 'white', opacity: !hasClip ? 0.5 : 1 }}>
                   {isExporting ? 'Exporting…'
-                    : !hasClip ? 'Set clip points first'
-                    : `Export ${format.toUpperCase()} — ${framePlan.length} frames`}
+                    : !hasClip ? 'Set clip range first'
+                    : `Export ${format.toUpperCase()} — ${clipLength} steps`}
                 </button>
               )}
             </div>
@@ -422,5 +661,80 @@ export default function ExportEditorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Main session export page ─────────────────────────────────────────────────
+
+export default function ExportEditorPage() {
+  const { sessionId } = useParams();
+  const navigate = useNavigate();
+
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [needsPermission, setNeedsPermission] = useState(false);
+  const [steps, setSteps] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      setLoading(true);
+      setLoadError(null);
+      setNeedsPermission(false);
+      try {
+        const cache = await loadSessionsCache();
+        if (!cache) throw new Error('No sessions cache found. Please reconnect your .claude folder.');
+
+        let found = null;
+        let pid = null;
+        for (const project of cache.projects) {
+          found = project.sessions.find(s => s.id === sessionId);
+          if (found) { pid = project.id; break; }
+        }
+        if (!found) throw new Error('Session not found in cache. Try refreshing on the picker page.');
+
+        let lines = found.lines;
+        if (!lines || lines.length === 0) {
+          const handle = await getSavedSessionsDirectory();
+          if (!handle) { if (!cancelled) { setNeedsPermission(true); setLoading(false); } return; }
+          lines = await loadFullSession(handle, pid, sessionId);
+        }
+
+        if (!lines || lines.length === 0) throw new Error('Session file is empty or unreadable.');
+        const builtSteps = buildSteps(parseSession(lines));
+        if (!cancelled) { setSteps(builtSteps); setLoading(false); }
+      } catch (e) {
+        if (!cancelled) { setLoadError(e.message); setLoading(false); }
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
+      Loading session…
+    </div>
+  );
+  if (needsPermission) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, color: 'var(--text-secondary)' }}>
+      <div>Directory access required to load session.</div>
+      <button onClick={() => navigate('/')} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>← Back to picker</button>
+    </div>
+  );
+  if (loadError) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, color: 'var(--red)' }}>
+      <div>{loadError}</div>
+      <button onClick={() => navigate(-1)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>← Back</button>
+    </div>
+  );
+
+  return (
+    <ExportShell
+      steps={steps}
+      sessionId={sessionId}
+      backTo={`/replay/${sessionId}`}
+      filePrefix={`session-${sessionId.slice(0, 8)}`}
+    />
   );
 }

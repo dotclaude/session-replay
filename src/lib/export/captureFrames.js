@@ -1,33 +1,77 @@
 /**
  * captureFrames
  *
- * Renders each frame directly to a canvas via the 2D API — no DOM capture,
- * no html2canvas. ~2ms per frame instead of ~500ms.
+ * Records the live preview by hooking into the animator's afterStepRef.
+ * The animator plays at maximum speed — after each step, we capture the DOM
+ * via html2canvas then let the animator advance to the next step.
  *
- * Returns: { frames: HTMLCanvasElement[] }
+ * Returns: { frames: HTMLCanvasElement[], steps: Array }
  */
 
-import { buildFramePlan } from './buildFramePlan.js';
-import { renderFrameToCanvas, makeCanvas } from './renderFrameToCanvas.js';
+import html2canvas from 'html2canvas';
 
-export async function captureFrames({ steps, clipIn, clipOut, onProgress }) {
-  const plan = buildFramePlan(steps, clipIn, clipOut);
-  const frames = [];
+const SKIP_KINDS = new Set(['session-header', 'local-command-output', 'queue-op']);
 
-  for (let f = 0; f < plan.length; f++) {
-    const { stepIndex, textRevealFraction } = plan[f];
-    const step = steps[stepIndex];
-    if (!step) continue;
+export function captureFrames({ previewEl, animatorRef, steps, onProgress }) {
+  return new Promise((resolve, reject) => {
+    const animator = animatorRef;
+    const totalSteps = animator.totalSteps; // total steps in clipped ref
+    const captureSteps = steps.filter(s => s && !SKIP_KINDS.has(s.kind));
 
-    const canvas = makeCanvas(900, 600);
-    renderFrameToCanvas(canvas, step, textRevealFraction);
-    frames.push(canvas);
+    if (captureSteps.length === 0) {
+      resolve({ frames: [], steps: [] });
+      return;
+    }
 
-    onProgress?.((f + 1) / plan.length);
+    const frames = [];
+    const capturedSteps = [];
+    const dpr = window.devicePixelRatio || 1;
+    const w = previewEl.offsetWidth;
+    const h = previewEl.offsetHeight;
 
-    // Yield to the event loop every 20 frames so the progress bar updates
-    if (f % 20 === 19) await new Promise(r => setTimeout(r, 0));
-  }
+    let stepsProcessed = 0; // counts all steps seen (including skipped)
 
-  return { frames };
+    animator.afterStepRef.current = async (stepIndex) => {
+      stepsProcessed++;
+      const step = steps[stepIndex];
+      const isLast = stepIndex >= totalSteps - 1;
+
+      // Wait two rAFs so React has committed and the scroll position has updated.
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+      if (step && !SKIP_KINDS.has(step.kind)) {
+        const raw = await html2canvas(previewEl, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: '#0d1117',
+          scale: 1 / dpr,
+          width: w,
+          height: h,
+          logging: false,
+        });
+
+        let canvas = raw;
+        if (raw.width !== w || raw.height !== h) {
+          canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(raw, 0, 0, w, h);
+        }
+
+        frames.push(canvas);
+        capturedSteps.push(step);
+        onProgress?.(frames.length / captureSteps.length);
+      }
+
+      if (isLast) {
+        animator.afterStepRef.current = null;
+        animator.pause();
+        resolve({ frames, steps: capturedSteps });
+      }
+    };
+
+    // Reset to step 0 and start playing immediately.
+    animator.reset();
+    animator.setIsPlaying(true);
+  });
 }

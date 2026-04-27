@@ -1,23 +1,22 @@
 /**
  * renderFrameToCanvas
  *
- * Draws a single step onto an HTMLCanvasElement using the 2D API.
- * No DOM capture, no html2canvas — ~2ms per frame instead of ~500ms.
+ * Renders the accumulated step history onto an HTMLCanvasElement using the 2D API.
+ * Draws all history cards stacked (oldest at top, newest at bottom), then a
+ * ProcessingIndicator row beneath them — matching the live replay page layout.
  *
- * Visual style matches the app's dark theme. Each step renders as:
- *   [colored left bar] [header row: icon + label + timestamp]
- *   [body: wrapped text or key/value pairs]
- *
- * Long text is truncated at textRevealFraction (0..1) for the streaming effect.
+ * The last step in history may be partially revealed (textRevealFraction < 1)
+ * to produce the streaming-text animation effect.
  */
 
 const BG0      = '#0d1117';
 const BG1      = '#161b22';
 const BG2      = '#21262d';
-const BORDER   = '#444c56';  // Updated for 3:1 contrast (was #30363d)
+const BORDER   = '#444c56';
 const TEXT_PRI = '#e6edf3';
 const TEXT_SEC = '#8b949e';
-const TEXT_MUT = '#6e7681';  // Updated for 4.5:1 contrast (was #484f58)
+const TEXT_MUT = '#6e7681';
+const ACCENT   = '#58a6ff';
 const MONO     = "'Cascadia Code', 'Fira Code', 'Consolas', monospace";
 const SANS     = "'Inter', 'Segoe UI', system-ui, sans-serif";
 
@@ -41,7 +40,21 @@ const KIND_META = {
   'session-header':   { accent: '#58a6ff', icon: '◆',  label: 'session' },
 };
 
-// Wrap text into lines that fit within maxWidth pixels at the given font.
+const PROCESSING_MESSAGES = {
+  'assistant-text': 'Claude is thinking...',
+  'tool-bash':      'Running command...',
+  'tool-write':     'Writing file...',
+  'tool-edit':      'Editing file...',
+  'tool-read':      'Reading file...',
+  'tool-agent':     'Running agent...',
+  'tool-web':       'Fetching data...',
+  'tool-task':      'Managing tasks...',
+  'tool-generic':   'Using tool...',
+  'human':          'Awaiting user input...',
+  'hook-event':     'Executing hook...',
+  'compaction-event': 'Compacting context...',
+};
+
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
   for (const para of text.split('\n')) {
@@ -62,9 +75,8 @@ function wrapText(ctx, text, maxWidth) {
   return lines;
 }
 
-function extractBodyText(step, revealFraction) {
+function extractBodyText(step, revealFraction = 1) {
   let text = '';
-
   switch (step.kind) {
     case 'human':
     case 'assistant-text':
@@ -109,102 +121,353 @@ function extractBodyText(step, revealFraction) {
 
   if (revealFraction < 1 && text.length > 0) {
     text = text.slice(0, Math.ceil(text.length * revealFraction));
-    // Don't cut mid-word
     const lastSpace = text.lastIndexOf(' ');
     if (lastSpace > text.length * 0.8) text = text.slice(0, lastSpace);
-    text += '▌'; // cursor
+    text += '▌';
   }
-
   return text;
 }
 
-export function renderFrameToCanvas(canvas, step, revealFraction = 1) {
-  const W = canvas.width;
-  const H = canvas.height;
-  const ctx = canvas.getContext('2d');
+// Measure how tall a single card will be given its content.
+function measureCardHeight(ctx, step, revealFraction, cardW) {
+  const PAD = 16;
+  const BAR_W = 3;
+  const HEADER_H = 32;
+  const BODY_PAD = 12;
+  const isCode = ['tool-bash', 'tool-write', 'tool-edit', 'tool-read'].includes(step.kind);
+  const lineH = isCode ? 17 : 19;
+  const textW = cardW - BAR_W - BODY_PAD * 2;
 
-  // Background
-  ctx.fillStyle = BG0;
-  ctx.fillRect(0, 0, W, H);
+  ctx.font = isCode ? `11px ${MONO}` : `12px ${SANS}`;
+  const bodyText = extractBodyText(step, revealFraction);
+  const lines = bodyText ? wrapText(ctx, bodyText, textW) : [];
+  const maxBodyLines = 8;
+  const shownLines = Math.min(lines.length, maxBodyLines);
+
+  return HEADER_H + (shownLines > 0 ? BODY_PAD + shownLines * lineH + BODY_PAD : BODY_PAD);
+}
+
+// Draw a single card at position y, returns the height used.
+function drawCard(ctx, step, revealFraction, x, y, cardW, isCurrent) {
+  const BAR_W = 3;
+  const HEADER_H = 32;
+  const BODY_PAD = 12;
+  const isCode = ['tool-bash', 'tool-write', 'tool-edit', 'tool-read'].includes(step.kind);
+  const lineH = isCode ? 17 : 19;
+  const textW = cardW - BAR_W - BODY_PAD * 2;
+  const maxBodyLines = 8;
+
+  ctx.font = isCode ? `11px ${MONO}` : `12px ${SANS}`;
+  const bodyText = extractBodyText(step, revealFraction);
+  const lines = bodyText ? wrapText(ctx, bodyText, textW) : [];
+  const shownLines = Math.min(lines.length, maxBodyLines);
+  const cardH = HEADER_H + (shownLines > 0 ? BODY_PAD + shownLines * lineH + BODY_PAD : BODY_PAD);
 
   const meta = KIND_META[step.kind] || { accent: BORDER, icon: '·', label: step.kind };
-  const PAD = 20;
-  const CARD_X = PAD;
-  const CARD_W = W - PAD * 2;
-  const BAR_W = 3;
-  const HEADER_H = 36;
-  const BODY_PAD = 14;
 
-  // Card background
+  // Card bg
   ctx.fillStyle = BG1;
   ctx.beginPath();
-  ctx.roundRect(CARD_X, PAD, CARD_W, H - PAD * 2, 6);
+  ctx.roundRect(x, y, cardW, cardH, 6);
   ctx.fill();
+
+  // Current step highlight border
+  if (isCurrent) {
+    ctx.strokeStyle = meta.accent + '55';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x, y, cardW, cardH, 6);
+    ctx.stroke();
+  }
 
   // Left accent bar
   ctx.fillStyle = meta.accent;
   ctx.beginPath();
-  ctx.roundRect(CARD_X, PAD, BAR_W, H - PAD * 2, [6, 0, 0, 6]);
+  ctx.roundRect(x, y, BAR_W, cardH, [6, 0, 0, 6]);
   ctx.fill();
 
-  // Header row background
+  // Header bg
   ctx.fillStyle = BG2;
   ctx.beginPath();
-  ctx.roundRect(CARD_X, PAD, CARD_W, HEADER_H, [6, 6, 0, 0]);
+  ctx.roundRect(x, y, cardW, HEADER_H, [6, 6, 0, 0]);
   ctx.fill();
 
-  // Header bottom border
+  // Header border
   ctx.strokeStyle = BORDER;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(CARD_X, PAD + HEADER_H);
-  ctx.lineTo(CARD_X + CARD_W, PAD + HEADER_H);
+  ctx.moveTo(x, y + HEADER_H);
+  ctx.lineTo(x + cardW, y + HEADER_H);
   ctx.stroke();
 
   // Icon
-  ctx.font = `bold 13px ${SANS}`;
+  ctx.font = `bold 12px ${SANS}`;
   ctx.fillStyle = meta.accent;
-  ctx.fillText(meta.icon, CARD_X + BAR_W + 12, PAD + HEADER_H / 2 + 5);
+  ctx.fillText(meta.icon, x + BAR_W + 10, y + HEADER_H / 2 + 4);
 
   // Label
-  ctx.font = `bold 11px ${SANS}`;
+  ctx.font = `bold 10px ${SANS}`;
   ctx.fillStyle = meta.accent;
   const iconW = ctx.measureText(meta.icon).width;
-  ctx.fillText(meta.label.toUpperCase(), CARD_X + BAR_W + 12 + iconW + 8, PAD + HEADER_H / 2 + 5);
+  ctx.fillText(meta.label.toUpperCase(), x + BAR_W + 10 + iconW + 7, y + HEADER_H / 2 + 4);
 
-  // Timestamp (right-aligned)
+  // Timestamp
   const ts = step.event?.timestamp || step.timestamp;
+  if (ts) {
+    const tsStr = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    ctx.font = `9px ${MONO}`;
+    ctx.fillStyle = TEXT_MUT;
+    const tsW = ctx.measureText(tsStr).width;
+    ctx.fillText(tsStr, x + cardW - 10 - tsW, y + HEADER_H / 2 + 4);
+  }
+
+  // Body
+  if (shownLines > 0) {
+    ctx.font = isCode ? `11px ${MONO}` : `12px ${SANS}`;
+    ctx.fillStyle = step.kind === 'error-event' ? '#f85149' : TEXT_PRI;
+    lines.slice(0, maxBodyLines).forEach((line, i) => {
+      ctx.fillText(line, x + BAR_W + BODY_PAD, y + HEADER_H + BODY_PAD + (i + 1) * lineH);
+    });
+    if (lines.length > maxBodyLines) {
+      ctx.font = `10px ${SANS}`;
+      ctx.fillStyle = TEXT_MUT;
+      ctx.fillText(`… +${lines.length - maxBodyLines} more lines`, x + BAR_W + BODY_PAD, y + HEADER_H + BODY_PAD + (maxBodyLines + 1) * lineH);
+    }
+  }
+
+  return cardH;
+}
+
+// Draw the "Claude is..." processing indicator row.
+function drawProcessingIndicator(ctx, message, x, y, cardW) {
+  const H = 36;
+  ctx.fillStyle = BG1;
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, cardW, H, 4);
+  ctx.fill();
+  ctx.stroke();
+
+  // Dots
+  const dotY = y + H / 2;
+  const dotX0 = x + 14;
+  for (let d = 0; d < 3; d++) {
+    ctx.beginPath();
+    ctx.arc(dotX0 + d * 10, dotY, 3, 0, Math.PI * 2);
+    ctx.fillStyle = ACCENT;
+    ctx.fill();
+  }
+
+  ctx.font = `11px ${SANS}`;
+  ctx.fillStyle = TEXT_MUT;
+  ctx.fillText(message, dotX0 + 36, dotY + 4);
+
+  return H;
+}
+
+/**
+ * Render modes:
+ *   'scroll'  — history accumulates, newest card at bottom, older cards scroll off top (default)
+ *   'stream'  — only the current (last) step shown, expanded to fill the canvas
+ *   'focused' — current step at bottom (full size), up to 2 prior steps shown above it dimmed
+ */
+
+function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+  const PAD_X = 16;
+  const GAP = 6;
+  const cardW = W - PAD_X * 2;
+
+  const heights = history.map((step, i) => {
+    const frac = i === history.length - 1 ? lastRevealFraction : 1;
+    return measureCardHeight(ctx, step, frac, cardW);
+  });
+  const indicatorH = processingMessage ? 36 + GAP : 0;
+  const totalH = heights.reduce((a, b) => a + b, 0) + GAP * history.length + indicatorH;
+
+  const scrollY = Math.min(0, H - totalH - PAD_X);
+  let y = PAD_X + scrollY;
+
+  for (let i = 0; i < history.length; i++) {
+    const step = history[i];
+    const frac = i === history.length - 1 ? lastRevealFraction : 1;
+    const isCurrent = i === history.length - 1;
+    if (y + heights[i] > 0 && y < H) {
+      drawCard(ctx, step, frac, PAD_X, y, cardW, isCurrent);
+    }
+    y += heights[i] + GAP;
+  }
+
+  if (processingMessage) {
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, y, cardW);
+  }
+}
+
+function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+  // Only the current step, expanded — body lines uncapped, card fills available height.
+  const PAD_X = 16;
+  const cardW = W - PAD_X * 2;
+  const current = history[history.length - 1];
+  if (!current) return;
+
+  const BAR_W = 3;
+  const HEADER_H = 36;
+  const BODY_PAD = 14;
+  const isCode = ['tool-bash', 'tool-write', 'tool-edit', 'tool-read'].includes(current.kind);
+  const lineH = isCode ? 18 : 20;
+
+  ctx.font = isCode ? `12px ${MONO}` : `13px ${SANS}`;
+  const bodyText = extractBodyText(current, lastRevealFraction);
+  const textW = cardW - BAR_W - BODY_PAD * 2;
+  const lines = bodyText ? wrapText(ctx, bodyText, textW) : [];
+  const indicatorH = processingMessage ? 44 : 0;
+  const availH = H - PAD_X * 2 - indicatorH;
+  const maxLines = Math.max(1, Math.floor((availH - HEADER_H - BODY_PAD * 2) / lineH));
+
+  // Draw full-height card
+  const cardH = availH;
+  const meta = KIND_META[current.kind] || { accent: BORDER, icon: '·', label: current.kind };
+
+  ctx.fillStyle = BG1;
+  ctx.beginPath();
+  ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
+  ctx.fill();
+
+  ctx.strokeStyle = meta.accent + '55';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
+  ctx.stroke();
+
+  ctx.fillStyle = meta.accent;
+  ctx.beginPath();
+  ctx.roundRect(PAD_X, PAD_X, BAR_W, cardH, [6, 0, 0, 6]);
+  ctx.fill();
+
+  ctx.fillStyle = BG2;
+  ctx.beginPath();
+  ctx.roundRect(PAD_X, PAD_X, cardW, HEADER_H, [6, 6, 0, 0]);
+  ctx.fill();
+
+  ctx.strokeStyle = BORDER;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD_X, PAD_X + HEADER_H);
+  ctx.lineTo(PAD_X + cardW, PAD_X + HEADER_H);
+  ctx.stroke();
+
+  ctx.font = `bold 14px ${SANS}`;
+  ctx.fillStyle = meta.accent;
+  ctx.fillText(meta.icon, PAD_X + BAR_W + 12, PAD_X + HEADER_H / 2 + 5);
+
+  ctx.font = `bold 12px ${SANS}`;
+  const iconW = ctx.measureText(meta.icon).width;
+  ctx.fillStyle = meta.accent;
+  ctx.fillText(meta.label.toUpperCase(), PAD_X + BAR_W + 12 + iconW + 8, PAD_X + HEADER_H / 2 + 5);
+
+  const ts = current.event?.timestamp || current.timestamp;
   if (ts) {
     const tsStr = new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     ctx.font = `10px ${MONO}`;
     ctx.fillStyle = TEXT_MUT;
     const tsW = ctx.measureText(tsStr).width;
-    ctx.fillText(tsStr, CARD_X + CARD_W - 12 - tsW, PAD + HEADER_H / 2 + 4);
+    ctx.fillText(tsStr, PAD_X + cardW - 12 - tsW, PAD_X + HEADER_H / 2 + 5);
   }
 
-  // Body text
-  const bodyText = extractBodyText(step, revealFraction);
-  if (bodyText) {
-    const isCode = ['tool-bash', 'tool-write', 'tool-edit', 'tool-read'].includes(step.kind);
+  if (lines.length > 0) {
     ctx.font = isCode ? `12px ${MONO}` : `13px ${SANS}`;
-    ctx.fillStyle = step.kind === 'error-event' ? '#f85149' : TEXT_PRI;
-
-    const textX = CARD_X + BAR_W + BODY_PAD;
-    const textW = CARD_W - BAR_W - BODY_PAD * 2;
-    const lineH = isCode ? 18 : 20;
-    const lines = wrapText(ctx, bodyText, textW);
-    const maxLines = Math.floor((H - PAD * 2 - HEADER_H - BODY_PAD * 2) / lineH);
-
+    ctx.fillStyle = current.kind === 'error-event' ? '#f85149' : TEXT_PRI;
     lines.slice(0, maxLines).forEach((line, i) => {
-      ctx.fillText(line, textX, PAD + HEADER_H + BODY_PAD + (i + 1) * lineH);
+      ctx.fillText(line, PAD_X + BAR_W + BODY_PAD, PAD_X + HEADER_H + BODY_PAD + (i + 1) * lineH);
     });
-
     if (lines.length > maxLines) {
       ctx.font = `11px ${SANS}`;
       ctx.fillStyle = TEXT_MUT;
-      ctx.fillText(`… +${lines.length - maxLines} more lines`, textX, PAD + HEADER_H + BODY_PAD + (maxLines + 1) * lineH);
+      ctx.fillText(`… +${lines.length - maxLines} more lines`, PAD_X + BAR_W + BODY_PAD, PAD_X + HEADER_H + BODY_PAD + (maxLines + 1) * lineH);
     }
   }
+
+  if (processingMessage) {
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, PAD_X + cardH + 6, cardW);
+  }
+}
+
+function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+  // Current step large at bottom; up to 2 prior steps shown above, dimmed and compact.
+  const PAD_X = 16;
+  const GAP = 8;
+  const cardW = W - PAD_X * 2;
+  const indicatorH = processingMessage ? 44 + GAP : 0;
+
+  const current = history[history.length - 1];
+  if (!current) return;
+
+  // Measure current card (full size)
+  const currentH = measureCardHeight(ctx, current, lastRevealFraction, cardW);
+
+  // Prior steps: up to 2, compact (max 3 body lines), dimmed
+  const priorCount = Math.min(2, history.length - 1);
+  const priorSteps = history.slice(history.length - 1 - priorCount, history.length - 1);
+
+  // Total space available above current
+  const bottomY = H - PAD_X - indicatorH - currentH - GAP;
+  let y = PAD_X;
+
+  // Distribute prior steps in the space above
+  if (priorSteps.length > 0) {
+    const priorH = Math.min(bottomY / priorSteps.length - GAP, 80);
+    y = bottomY - priorSteps.length * (priorH + GAP);
+
+    // Dim older steps
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    for (const step of priorSteps) {
+      drawCard(ctx, step, 1, PAD_X, y, cardW, false);
+      y += priorH + GAP;
+    }
+    ctx.restore();
+  }
+
+  // Current step at bottom
+  const currentY = H - PAD_X - indicatorH - currentH;
+  drawCard(ctx, current, lastRevealFraction, PAD_X, currentY, cardW, true);
+
+  if (processingMessage) {
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, H - PAD_X - indicatorH + GAP, cardW);
+  }
+}
+
+/**
+ * Render a full history of steps onto canvas.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {Array} history - all steps executed so far (oldest first)
+ * @param {string|null} processingMessage - if non-null, show the indicator after history
+ * @param {number} lastRevealFraction - text reveal fraction for the last history step
+ * @param {'scroll'|'stream'|'focused'} renderMode
+ */
+export function renderHistoryToCanvas(canvas, history, processingMessage, lastRevealFraction = 1, renderMode = 'scroll') {
+  const W = canvas.width;
+  const H = canvas.height;
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = BG0;
+  ctx.fillRect(0, 0, W, H);
+
+  if (!history || history.length === 0) return;
+
+  if (renderMode === 'stream') {
+    renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+  } else if (renderMode === 'focused') {
+    renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+  } else {
+    renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+  }
+}
+
+// Legacy single-step render kept for backward compatibility.
+export function renderFrameToCanvas(canvas, step, revealFraction = 1) {
+  renderHistoryToCanvas(canvas, [step], null, revealFraction);
 }
 
 export function makeCanvas(width = 900, height = 600) {

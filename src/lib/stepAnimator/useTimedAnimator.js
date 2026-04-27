@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 
 /**
  * useTimedAnimator
@@ -13,14 +14,15 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
  *   'compressed' — real timing divided by compressionFactor
  */
 
-function computeStepDuration(steps, index, mode, factor, fixedDuration) {
+function computeStepDuration(steps, index, mode, factor, fixedDuration, speed) {
   if (mode === 'fixed') return fixedDuration;
   const cur = steps[index]?.timestamp;
   const next = steps[index + 1]?.timestamp;
   if (!cur || !next) return fixedDuration;
   const delta = new Date(next) - new Date(cur);
   const clamped = Math.min(Math.max(delta, 50), 30_000);
-  return mode === 'realtime' ? clamped : clamped / factor;
+  if (mode === 'realtime') return clamped / (speed || 1);
+  return clamped / factor;
 }
 
 export function useTimedAnimator({
@@ -29,18 +31,25 @@ export function useTimedAnimator({
   resetState,
   initialDuration = 600,
   initialSpeed = 1,
+  initialMode = 'fixed',
+  initialCompressionFactor = 25,
 }) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(initialSpeed);
   const [animationDuration, setAnimationDuration] = useState(initialDuration);
-  const [mode, setMode] = useState('fixed'); // 'fixed' | 'realtime' | 'compressed'
-  const [compressionFactor, setCompressionFactor] = useState(25);
+  const [mode, setMode] = useState(initialMode); // 'fixed' | 'realtime' | 'compressed'
+  const [compressionFactor, setCompressionFactor] = useState(initialCompressionFactor);
 
   const executeStepRef = useRef(executeStep);
   const resetStateRef = useRef(resetState);
   useEffect(() => { executeStepRef.current = executeStep; }, [executeStep]);
   useEffect(() => { resetStateRef.current = resetState; }, [resetState]);
+
+  // When set, called after each step executes during recording mode.
+  // The callback receives the step index and returns a Promise.
+  // The animator waits for the promise to resolve before advancing.
+  const afterStepRef = useRef(null);
 
   // Precompute cumulative elapsed ms from timestamps
   const cumulativeMs = useMemo(() => {
@@ -57,13 +66,37 @@ export function useTimedAnimator({
 
   useEffect(() => {
     if (!isPlaying) return;
-    if (currentStep >= steps.current.length - 1) {
+
+    const isLastStep = currentStep >= steps.current.length - 1;
+    const recordingCb = afterStepRef.current;
+
+    if (recordingCb) {
+      // Recording mode: call the hook for every step including the last one.
+      // captureFrames.js is responsible for calling animator.pause() when done.
+      const handle = setTimeout(() => {
+        recordingCb(currentStep).then(() => {
+          if (!isLastStep) {
+            setCurrentStep(prev => {
+              const next = prev + 1;
+              executeStepRef.current(steps.current[next]);
+              return next;
+            });
+          }
+          // If isLastStep, captureFrames's hook sets afterStepRef.current=null and
+          // calls animator.pause() — isPlaying becomes false and the effect stops.
+        });
+      }, 0);
+      return () => clearTimeout(handle);
+    }
+
+    // Normal playback mode.
+    if (isLastStep) {
       setIsPlaying(false);
       return;
     }
 
     const delay = computeStepDuration(
-      steps.current, currentStep, mode, compressionFactor, animationDuration / playbackSpeed
+      steps.current, currentStep, mode, compressionFactor, animationDuration / playbackSpeed, playbackSpeed
     );
 
     const timer = setTimeout(() => {
@@ -73,7 +106,6 @@ export function useTimedAnimator({
         return next;
       });
     }, delay);
-
     return () => clearTimeout(timer);
   }, [isPlaying, currentStep, playbackSpeed, animationDuration, mode, compressionFactor, steps]);
 
@@ -82,16 +114,22 @@ export function useTimedAnimator({
 
   const reset = useCallback(() => {
     setIsPlaying(false);
-    setCurrentStep(0);
-    resetStateRef.current?.();
-    executeStepRef.current(steps.current[0]);
+    flushSync(() => {
+      resetStateRef.current?.();
+      executeStepRef.current(steps.current[0]);
+      setCurrentStep(0);
+    });
   }, [steps]);
 
   const scrubTo = useCallback((index) => {
     setIsPlaying(false);
-    resetStateRef.current?.();
-    for (let i = 0; i <= index; i++) executeStepRef.current(steps.current[i]);
-    setCurrentStep(index);
+    // flushSync forces reset + repopulation to commit in a single DOM update,
+    // preventing the empty-history frame that causes flicker.
+    flushSync(() => {
+      resetStateRef.current?.();
+      for (let i = 0; i <= index; i++) executeStepRef.current(steps.current[i]);
+      setCurrentStep(index);
+    });
   }, [steps]);
 
   return {
@@ -107,5 +145,7 @@ export function useTimedAnimator({
     mode, setMode,
     compressionFactor, setCompressionFactor,
     elapsedMs: cumulativeMs[currentStep] ?? 0,
+    afterStepRef,  // set to async fn(stepIndex) => void to enable recording mode
+    setIsPlaying,  // allow external callers to trigger play without going through play()
   };
 }

@@ -21,7 +21,7 @@ import { ReplayContext } from '../lib/ReplayContext.jsx';
 import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
 
 // Shared replay UI — accepts pre-loaded steps and meta, renders the full replay experience.
-export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo, backLabel }) {
+export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo, backLabel, exportTo }) {
   const navigate = useNavigate();
 
   const [sessionStats, setSessionStats] = useState(null);
@@ -163,9 +163,8 @@ export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo
             onClear={() => setSearchMatches([])}
           />
 
-          {/* Animation editor — only for main sessions, not agent sub-sessions */}
-          {!backTo && (
-            <button onClick={() => navigate(`/export/${sessionId}`)}
+          {(!backTo || exportTo) && (
+            <button onClick={() => navigate(exportTo ?? `/export/${sessionId}`)}
               style={{
                 padding: '4px 10px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', flexShrink: 0,
                 background: 'var(--bg-2)',

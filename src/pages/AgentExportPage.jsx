@@ -6,9 +6,9 @@ import { loadSessionsCache } from '../lib/sessionsStore.ts';
 import { getSavedSessionsDirectory, supportsFileSystemAccess } from '../lib/fsAccess.ts';
 import { loadSubAgentSession } from '../lib/progressiveSessionReader.ts';
 import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
-import { ReplayShell } from './ReplayPage.jsx';
+import { ExportShell } from './ExportEditorPage.jsx';
 
-export default function AgentReplayPage() {
+export default function AgentExportPage() {
   const { sessionId, agentId } = useParams();
   const navigate = useNavigate();
   const { reinitialise } = useSessionProvider();
@@ -16,16 +16,12 @@ export default function AgentReplayPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [needsPermission, setNeedsPermission] = useState(false);
-  const [steps, setSteps] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [projectId, setProjectId] = useState(null);
-  const [parentSession, setParentSession] = useState(null);
+  const [steps, setSteps] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     setNeedsPermission(false);
-
     try {
       const cache = await loadSessionsCache();
       if (!cache) throw new Error('No sessions cache found. Please reconnect your .claude folder.');
@@ -38,37 +34,22 @@ export default function AgentReplayPage() {
       }
       if (!found) throw new Error('Parent session not found in cache. Try refreshing on the picker page.');
 
-      // Firefox: use cached lines stored during import
+      // Firefox path: cached lines from import
       if (found.subAgentLines?.[agentId]) {
         const lines = found.subAgentLines[agentId];
-        const builtSteps = buildSteps(parseSession(lines));
-        setSteps(builtSteps);
-        setMeta({ title: `Agent · ${agentId.slice(0, 10)}…`, sessionId: agentId });
-        setProjectId(pid);
-        setParentSession(found);
+        setSteps(buildSteps(parseSession(lines)));
         setLoading(false);
         return;
       }
 
-      // Chrome: get FS handle — may need a user gesture to grant permission
       const handle = await getSavedSessionsDirectory();
-      if (!handle) {
-        setNeedsPermission(true);
-        setLoading(false);
-        return;
-      }
+      if (!handle) { setNeedsPermission(true); setLoading(false); return; }
 
       const lines = await loadSubAgentSession(handle, pid, sessionId, agentId);
       if (!lines || lines.length === 0) throw new Error('Agent session file is empty or unreadable.');
-
-      const builtSteps = buildSteps(parseSession(lines));
-      setSteps(builtSteps);
-      setMeta({ title: `Agent · ${agentId.slice(0, 10)}…`, sessionId: agentId });
-      setProjectId(pid);
-      setParentSession(found);
+      setSteps(buildSteps(parseSession(lines)));
       setLoading(false);
     } catch (e) {
-      console.error('Failed to load agent session:', e);
       setError(e.message);
       setLoading(false);
     }
@@ -77,7 +58,6 @@ export default function AgentReplayPage() {
   useEffect(() => { load(); }, [load]);
 
   const handleGrantAccess = useCallback(async () => {
-    // requestPermission requires a user gesture — this button click provides it
     await reinitialise();
     load();
   }, [reinitialise, load]);
@@ -96,36 +76,32 @@ export default function AgentReplayPage() {
           ? 'Click below to grant access to your .claude folder.'
           : 'Re-import your .claude folder from the picker to load sub-agent sessions.'}
       </div>
-      {supportsFileSystemAccess() ? (
+      {supportsFileSystemAccess() && (
         <button onClick={handleGrantAccess} style={{ padding: '8px 20px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: 'var(--bg-0)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
           Grant access
         </button>
-      ) : null}
-      <button onClick={() => navigate(`/replay/${sessionId}`)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
-        ← Parent session
+      )}
+      <button onClick={() => navigate(`/replay/${sessionId}/agent/${agentId}`)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
+        ← Back to agent replay
       </button>
     </div>
   );
 
   if (error) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 12, color: 'var(--red)' }}>
-      <div>Failed to load agent session: {error}</div>
-      <button onClick={() => navigate(`/replay/${sessionId}`)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>
-        ← Parent session
+      <div>{error}</div>
+      <button onClick={() => navigate(`/replay/${sessionId}/agent/${agentId}`)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', cursor: 'pointer' }}>
+        ← Back to agent replay
       </button>
     </div>
   );
 
   return (
-    <ReplayShell
+    <ExportShell
       steps={steps}
-      meta={meta}
-      projectId={projectId}
       sessionId={agentId}
-      session={parentSession}
-      backTo={`/replay/${sessionId}`}
-      backLabel="Parent session"
-      exportTo={`/export/${sessionId}/agent/${agentId}`}
+      backTo={`/replay/${sessionId}/agent/${agentId}`}
+      filePrefix={`agent-${agentId.slice(0, 8)}`}
     />
   );
 }
