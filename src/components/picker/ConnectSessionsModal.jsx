@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getHiddenFolderHint } from '../../lib/platformHints';
 import { supportsFileSystemAccess } from '../../lib/fsAccess';
-import DirectoryDropZone from './DirectoryDropZone';
+import { resolveSessionsDirectory } from '../../lib/fsAccess';
 
 export default function ConnectSessionsModal({
   open,
@@ -15,18 +15,45 @@ export default function ConnectSessionsModal({
   if (!open) return null;
 
   const supported = supportsFileSystemAccess();
+  const [dragging, setDragging] = useState(false);
+
+  async function handleDrop(e) {
+    e.preventDefault();
+    setDragging(false);
+    if (!onDirectory) return;
+    const item = e.dataTransfer.items[0];
+    if (!item?.getAsFileSystemHandle) {
+      onError?.("Directory drag-and-drop is not supported in this browser.");
+      return;
+    }
+    try {
+      const handle = await item.getAsFileSystemHandle();
+      if (!handle || handle.kind !== 'directory') {
+        onError?.("Drop a directory, not a file.");
+        return;
+      }
+      const sessionsDir = await resolveSessionsDirectory(handle);
+      onDirectory(sessionsDir);
+    } catch (err) {
+      onError?.(err instanceof Error ? err.message : String(err));
+    }
+  }
 
   return (
     <div
+      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDragging(false); }}
+      onDrop={handleDrop}
       style={{
         position: 'fixed',
         inset: 0,
         display: 'grid',
         placeItems: 'center',
         padding: '1rem',
-        background: 'rgba(10, 15, 25, 0.75)',
+        background: dragging ? 'rgba(88, 166, 255, 0.08)' : 'rgba(10, 15, 25, 0.75)',
         zIndex: 1000,
         backdropFilter: 'blur(4px)',
+        transition: 'background 0.15s',
       }}
       role="presentation"
     >
@@ -79,10 +106,7 @@ export default function ConnectSessionsModal({
         {/* Primary: drag and drop */}
         {onDirectory && (
           <div style={{ marginBottom: '16px' }}>
-            <DirectoryDropZone
-              onDirectory={onDirectory}
-              onError={onError ?? (() => {})}
-            />
+            <DirectoryDropZone dragging={dragging} />
           </div>
         )}
 

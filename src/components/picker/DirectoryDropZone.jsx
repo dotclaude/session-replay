@@ -1,44 +1,8 @@
-import React, { useState } from 'react';
-import { resolveSessionsDirectory } from '../../lib/fsAccess';
+import React from 'react';
 
-export default function DirectoryDropZone({ onDirectory, onError }) {
-  const [dragging, setDragging] = useState(false);
-
-  async function onDrop(event) {
-    event.preventDefault();
-    setDragging(false);
-
-    const item = event.dataTransfer.items[0];
-
-    if (!item?.getAsFileSystemHandle) {
-      onError("Directory drag-and-drop handles are not supported in this browser.");
-      return;
-    }
-
-    try {
-      const handle = await item.getAsFileSystemHandle();
-
-      if (!handle || handle.kind !== "directory") {
-        onError("Drop a directory, not a file.");
-        return;
-      }
-
-      const sessionsDir = await resolveSessionsDirectory(handle);
-      // Permission is implicitly granted by the drag-and-drop gesture;
-      // requestPermission() here would lose the user-activation context and
-      // cause Chrome to navigate away. Let connectFromHandle surface any
-      // permission errors through the normal error banner instead.
-      onDirectory(sessionsDir);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : String(error));
-    }
-  }
-
+export default function DirectoryDropZone({ dragging }) {
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={onDrop}
       style={{
         padding: '28px 24px',
         border: `2px dashed ${dragging ? 'var(--accent)' : 'var(--border)'}`,
@@ -47,6 +11,7 @@ export default function DirectoryDropZone({ onDirectory, onError }) {
         textAlign: 'center',
         transition: 'border-color 0.15s, background 0.15s',
         cursor: 'default',
+        pointerEvents: 'none',
       }}
     >
       <div style={{ fontSize: '28px', marginBottom: '8px', opacity: dragging ? 1 : 0.5 }}>📁</div>
@@ -54,7 +19,9 @@ export default function DirectoryDropZone({ onDirectory, onError }) {
         Drag your .claude folder here
       </strong>
       <span style={{ fontSize: '12px', color: 'var(--text-muted)', lineHeight: 1.5, display: 'block' }}>
-        In Finder, press <kbd style={{ padding: '1px 5px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>⌘ Shift .</kbd> to show hidden folders, then drag <code style={{ fontFamily: 'var(--font-mono)' }}>.claude</code> into this window.
+        In Finder, press{' '}
+        <kbd style={{ padding: '1px 5px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '11px' }}>⌘ Shift .</kbd>
+        {' '}to show hidden folders, then drag <code style={{ fontFamily: 'var(--font-mono)' }}>.claude</code> into this window.
       </span>
     </div>
   );
