@@ -29,5 +29,6 @@ export default defineConfig({
   build: {
     // Ensure production build works with COEP
     target: 'esnext',
+    sourcemap: true, // Generate proper source maps for debugging
   },
 });
