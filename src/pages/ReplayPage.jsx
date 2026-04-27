@@ -15,6 +15,8 @@ import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import { getProcessingMessage } from '../lib/utils/processingMessages.js';
 import { loadSessionsCache } from '../lib/sessionsStore.ts';
+import { getSavedSessionsDirectory } from '../lib/fsAccess.ts';
+import { loadFullSession } from '../lib/progressiveSessionReader.ts';
 
 export default function ReplayPage() {
   const { sessionId } = useParams();
@@ -45,29 +47,44 @@ export default function ReplayPage() {
   useEffect(() => {
     setLoading(true);
 
-    // Load session from IndexedDB cache
+    // Load session on-demand from filesystem
     loadSessionsCache()
-      .then(cache => {
+      .then(async cache => {
         if (!cache) {
           throw new Error('No sessions cache found. Please reconnect your .claude folder.');
         }
 
-        // Find session in cache
+        // Find session metadata in cache
         let session = null;
+        let projectId = null;
         for (const project of cache.projects) {
           session = project.sessions.find(s => s.id === sessionId);
-          if (session) break;
+          if (session) {
+            projectId = project.id;
+            break;
+          }
         }
 
         if (!session) {
           throw new Error('Session not found in cache. Try refreshing on the picker page.');
         }
 
-        if (!session.lines || session.lines.length === 0) {
+        // Load full session content on-demand if not cached
+        let lines = session.lines;
+        if (!lines || lines.length === 0) {
+          const handle = await getSavedSessionsDirectory();
+          if (!handle) {
+            throw new Error('Cannot access .claude directory. Please reconnect.');
+          }
+
+          lines = await loadFullSession(handle, projectId, sessionId);
+        }
+
+        if (!lines || lines.length === 0) {
           throw new Error('Session file is empty or unreadable.');
         }
 
-        const events = parseSession(session.lines);
+        const events = parseSession(lines);
         const steps = buildSteps(events);
         stepsRef.current = steps;
         setMeta({ title: session.title || steps[0]?.event?.title || sessionId.slice(0, 16), sessionId });

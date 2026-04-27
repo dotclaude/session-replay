@@ -15,7 +15,7 @@ import {
   clearSessionsDirectoryHandle,
   clearSessionsCache,
 } from '../lib/sessionsStore.ts';
-import { readSessionsDirectory } from '../lib/sessionReader.ts';
+import { scanProjectsMetadata } from '../lib/progressiveSessionReader.ts';
 import { friendlyPickerError } from '../lib/errors.ts';
 
 function timeAgo(ts) {
@@ -106,11 +106,18 @@ export default function PickerPage() {
     setError(null);
 
     try {
-      const nextCache = await readSessionsDirectory(handle);
+      // Use progressive loading - only scan metadata, not full JSONL content
+      const projects = await scanProjectsMetadata(handle);
+
+      const nextCache = {
+        generatedAt: new Date().toISOString(),
+        projects,
+      };
+
       await saveSessionsCache(nextCache);
 
       setCache(nextCache);
-      setProjects(nextCache.projects);
+      setProjects(projects);
       setStatus('connected');
     } catch (err) {
       console.error('Failed to refresh sessions:', err);
@@ -122,11 +129,22 @@ export default function PickerPage() {
   async function boot() {
     try {
       const existingCache = await loadSessionsCache();
-      if (existingCache) {
+      if (existingCache && existingCache.projects && existingCache.projects.length > 0) {
+        // We have cached data - show it immediately
         setCache(existingCache);
         setProjects(existingCache.projects);
+        setStatus('connected');
+
+        // Try to get handle for future refreshes, but don't fail if unavailable
+        try {
+          await getSavedSessionsDirectory();
+        } catch {
+          // Permission revoked or handle unavailable - that's ok, cache works
+        }
+        return;
       }
 
+      // No cache - need to connect
       const handle = await getSavedSessionsDirectory();
 
       if (!handle) {
@@ -296,6 +314,11 @@ export default function PickerPage() {
           <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
             Session Replay
           </span>
+          {status === 'connected' && cache && (
+            <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 12 }}>
+              Last updated: {timeAgo(cache.generatedAt)}
+            </span>
+          )}
           {status === 'connected' && (
             <button
               onClick={refresh}
@@ -311,7 +334,7 @@ export default function PickerPage() {
                 marginLeft: 8,
               }}
             >
-              {busy ? 'Refreshing...' : 'Refresh'}
+              {busy ? 'Refreshing...' : '↻ Refresh'}
             </button>
           )}
           {status === 'connected' && (
