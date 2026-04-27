@@ -83,15 +83,20 @@ export async function getSavedSessionsDirectory(): Promise<
   const saved = await loadSessionsDirectoryHandle();
 
   if (!saved) {
+    console.log('[fsAccess] No handle found in IndexedDB');
     return undefined;
   }
+
+  console.log('[fsAccess] Handle loaded from IndexedDB:', saved.name);
 
   const hasPermission = await verifyReadPermission(saved);
 
   if (!hasPermission) {
+    console.log('[fsAccess] Permission denied for handle');
     return undefined;
   }
 
+  console.log('[fsAccess] Permission granted, returning handle');
   return saved;
 }
 
