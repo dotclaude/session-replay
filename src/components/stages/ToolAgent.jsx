@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { StageCard, CardHeader, timestamp, COLLAPSE, CollapsibleText } from './shared.jsx';
 import ToolModal from './ToolModal.jsx';
 import { useReplayContext } from '../../lib/ReplayContext.jsx';
@@ -7,7 +8,8 @@ import { useSessionProvider } from '../../lib/SessionProviderContext.jsx';
 export default function ToolAgent({ step, isCurrent, isSearchMatch = false }) {
   const { toolInput, result, timestamp: ts, subAgentId } = step.event;
   const [modalOpen, setModalOpen] = useState(false);
-  const [agentUrl, setAgentUrl] = useState(null);
+  const [agentPath, setAgentPath] = useState(null);
+  const navigate = useNavigate();
   const { projectId, sessionId, steps, session } = useReplayContext();
   const { provider } = useSessionProvider();
 
@@ -30,7 +32,7 @@ export default function ToolAgent({ step, isCurrent, isSearchMatch = false }) {
         const resolvedId = subAgentId && agentIds.includes(subAgentId)
           ? subAgentId
           : agentIds[myPosition] ?? null;
-        if (resolvedId) setAgentUrl(`/replay/${sessionId}/agent/${resolvedId}`);
+        if (resolvedId) setAgentPath(`/replay/${sessionId}/agent/${resolvedId}`);
       })
       .catch(() => {});
   }, [subAgentId, projectId, sessionId, steps, step.index, session, provider]);
@@ -62,25 +64,21 @@ export default function ToolAgent({ step, isCurrent, isSearchMatch = false }) {
         >
           👁 view details
         </button>
-        {agentUrl && (
-          <a
-            href={agentUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={e => e.stopPropagation()}
+        {agentPath && (
+          <button
+            onClick={e => { e.stopPropagation(); navigate(agentPath); }}
             style={{
               display: 'block', width: '100%', padding: '5px',
-              background: 'var(--bg-2)',
+              background: 'var(--bg-2)', border: 'none',
               borderTop: '1px solid var(--border)',
               color: 'var(--orange)',
               fontSize: 11, cursor: 'pointer',
               textAlign: 'center',
-              textDecoration: 'none',
               boxSizing: 'border-box',
             }}
           >
-            ◈ Open agent replay ↗
-          </a>
+            ◈ Open agent replay →
+          </button>
         )}
       </StageCard>
 
