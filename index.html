@@ -15,17 +15,6 @@
         font-size: 14px;
       }
     </style>
-    <script>
-      // Restore path encoded by 404.html after GitHub Pages redirect.
-      (function () {
-        var params = new URLSearchParams(window.location.search);
-        var p = params.get('p');
-        if (p) {
-          var h = params.get('h') || '';
-          window.history.replaceState(null, null, '/session-replay' + p + h);
-        }
-      })();
-    </script>
   </head>
   <body>
     <div id="root"></div>
