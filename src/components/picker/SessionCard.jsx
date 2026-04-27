@@ -85,7 +85,7 @@ const SessionCard = React.forwardRef(({ session, onClick }, ref) => {
       )}
 
       {/* Stats row */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: topTools.length ? 8 : 0 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
         {session.firstTs && (
           <span className="tag">
             {new Date(session.firstTs).toLocaleDateString()} {new Date(session.firstTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -98,6 +98,28 @@ const SessionCard = React.forwardRef(({ session, onClick }, ref) => {
         )}
         {session.gitBranch && session.gitBranch !== 'main' && (
           <span className="tag orange">{session.gitBranch}</span>
+        )}
+      </div>
+
+      {/* Feature pills row */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: topTools.length ? 6 : 0 }}>
+        {session.subAgentCount > 0 && (
+          <span className="tag" style={{ fontSize: 10, background: 'rgba(255,166,87,0.15)', color: 'var(--orange)', border: '1px solid rgba(255,166,87,0.3)' }}
+            title={`${session.subAgentCount} sub-agent task${session.subAgentCount !== 1 ? 's' : ''} spawned`}>
+            ◈ {session.subAgentCount} agent{session.subAgentCount !== 1 ? 's' : ''}
+          </span>
+        )}
+        {session.compactionCount > 0 && (
+          <span className="tag" style={{ fontSize: 10, background: 'rgba(139,92,246,0.15)', color: 'var(--purple, #a78bfa)', border: '1px solid rgba(139,92,246,0.3)' }}
+            title={`Context compacted ${session.compactionCount} time${session.compactionCount !== 1 ? 's' : ''}`}>
+            ⟳ {session.compactionCount} compact{session.compactionCount !== 1 ? 'ions' : 'ion'}
+          </span>
+        )}
+        {session.errorCount > 0 && (
+          <span className="tag" style={{ fontSize: 10, background: 'rgba(255,68,68,0.12)', color: 'var(--red)', border: '1px solid rgba(255,68,68,0.3)' }}
+            title={`${session.errorCount} API error${session.errorCount !== 1 ? 's' : ''} during session`}>
+            ✕ {session.errorCount} error{session.errorCount !== 1 ? 's' : ''}
+          </span>
         )}
       </div>
 

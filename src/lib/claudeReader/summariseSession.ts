@@ -14,6 +14,9 @@ export interface SessionSummary {
   totalOutputTokens: number;
   toolCounts: Record<string, number>;
   lineCount: number;
+  subAgentCount: number;
+  compactionCount: number;
+  errorCount: number;
   fromIndex?: boolean;
 }
 
@@ -32,6 +35,9 @@ export function summariseFromIndex(entry: any): SessionSummary {
     totalOutputTokens: 0,
     toolCounts: {},
     lineCount: entry.messageCount || 0,
+    subAgentCount: 0,
+    compactionCount: 0,
+    errorCount: 0,
     fromIndex: true,
   };
 }
@@ -49,6 +55,9 @@ export function summariseSession(lines: any[]): SessionSummary {
   let humanTurns = 0;
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
+  let subAgentCount = 0;
+  let compactionCount = 0;
+  let errorCount = 0;
 
   for (const obj of lines) {
     if (!firstTs && obj.timestamp) firstTs = obj.timestamp;
@@ -58,6 +67,8 @@ export function summariseSession(lines: any[]): SessionSummary {
     if (obj.type === 'custom-title' && !title) title = obj.customTitle;
     if (obj.type === 'system' && obj.subtype === 'away_summary' && !summary) summary = obj.content;
     if (obj.type === 'system' && obj.subtype === 'turn_duration') turnCount++;
+    if (obj.type === 'system' && obj.subtype === 'compact_boundary') compactionCount++;
+    if (obj.type === 'system' && obj.subtype === 'api_error') errorCount++;
     if (obj.type === 'pr-link') prLinks.push({ url: obj.prUrl, number: obj.prNumber, repo: obj.prRepository });
     if (obj.type === 'user') {
       const content = obj.message?.content;
@@ -70,7 +81,11 @@ export function summariseSession(lines: any[]): SessionSummary {
         totalOutputTokens += usage.output_tokens || 0;
       }
       for (const block of obj.message?.content || []) {
-        if (block.type === 'tool_use') toolCounts[block.name] = (toolCounts[block.name] || 0) + 1;
+        if (block.type === 'tool_use') {
+          toolCounts[block.name] = (toolCounts[block.name] || 0) + 1;
+          // Count Agent tool uses as sub-agents
+          if (block.name === 'Agent') subAgentCount++;
+        }
       }
     }
   }
@@ -89,5 +104,8 @@ export function summariseSession(lines: any[]): SessionSummary {
     totalOutputTokens,
     toolCounts,
     lineCount: lines.length,
+    subAgentCount,
+    compactionCount,
+    errorCount,
   };
 }
