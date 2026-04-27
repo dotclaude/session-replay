@@ -194,13 +194,26 @@ export default function PickerPage() {
     try {
       setError(null);
 
-      const handle = await getSavedSessionsDirectory();
-
-      if (!handle) {
+      // Check if browser supports persistent handles
+      if (!supportsFileSystemAccess()) {
+        // Firefox/Safari: No persistent handle, show friendly message
         setStatus('needs-connect');
+        setError('Your browser requires re-importing the folder. This is a browser limitation - Firefox/Safari cannot save directory access persistently.');
         return;
       }
 
+      // Chrome/Edge/Brave: Try to use saved handle
+      console.log('Attempting to get saved directory handle...');
+      const handle = await getSavedSessionsDirectory();
+
+      if (!handle) {
+        console.error('No handle found or permission denied');
+        setStatus('needs-connect');
+        setError('Permission expired or handle lost. Please reconnect your .claude folder.');
+        return;
+      }
+
+      console.log('Handle found, refreshing...');
       await refreshFromHandle(handle);
     } catch (err) {
       console.error('Refresh failed:', err);
@@ -319,7 +332,7 @@ export default function PickerPage() {
               Last updated: {timeAgo(cache.generatedAt)}
             </span>
           )}
-          {status === 'connected' && (
+          {status === 'connected' && supportsFileSystemAccess() && (
             <button
               onClick={refresh}
               disabled={busy}
@@ -333,8 +346,28 @@ export default function PickerPage() {
                 color: 'var(--text-secondary)',
                 marginLeft: 8,
               }}
+              title="Re-scan .claude directory for new sessions"
             >
               {busy ? 'Refreshing...' : '↻ Refresh'}
+            </button>
+          )}
+          {status === 'connected' && !supportsFileSystemAccess() && (
+            <button
+              onClick={() => setStatus('needs-connect')}
+              disabled={busy}
+              style={{
+                padding: '4px 10px',
+                fontSize: 11,
+                cursor: busy ? 'not-allowed' : 'pointer',
+                borderRadius: '6px',
+                background: 'var(--bg-2)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-secondary)',
+                marginLeft: 8,
+              }}
+              title="Re-import folder (browser limitation: Firefox/Safari cannot persist directory access)"
+            >
+              ↻ Re-import
             </button>
           )}
           {status === 'connected' && (
