@@ -74,6 +74,7 @@ export function useTimedAnimator({
       // Recording mode: call the hook for every step including the last one.
       // captureFrames.js is responsible for calling animator.pause() when done.
       const handle = setTimeout(() => {
+        console.log(`[animator] recording step ${currentStep}/${steps.current.length - 1} kind=${steps.current[currentStep]?.kind} t=${performance.now().toFixed(0)}ms`);
         recordingCb(currentStep).then(() => {
           if (!isLastStep) {
             setCurrentStep(prev => {

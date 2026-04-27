@@ -542,6 +542,280 @@ const LivePreview = forwardRef(function LivePreview({ stepsRef, clips, scale, re
   );
 });
 
+// ─── Export progress modal ────────────────────────────────────────────────────
+
+function MiniBar({ ratio, animated = false, color = 'var(--accent)', height = 4 }) {
+  return (
+    <div style={{ background: 'var(--bg-3)', borderRadius: 2, height, overflow: 'hidden', position: 'relative' }}>
+      {animated ? (
+        <>
+          <div style={{
+            position: 'absolute', height: '100%', width: '35%',
+            background: color, borderRadius: 2,
+            animation: 'encode-sweep 1.4s ease-in-out infinite',
+          }} />
+          <style>{`@keyframes encode-sweep { 0% { left: -35%; } 100% { left: 135%; } }`}</style>
+        </>
+      ) : (
+        <div style={{ width: `${Math.round((ratio ?? 0) * 100)}%`, height: '100%', background: color, borderRadius: 2, transition: 'width 0.2s' }} />
+      )}
+    </div>
+  );
+}
+
+function LogRow({ label, value, mono = true, dim = false, highlight = false }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, padding: '2px 0' }}>
+      <span style={{ fontSize: 11, color: dim ? 'var(--text-muted)' : 'var(--text-secondary)', flexShrink: 0 }}>{label}</span>
+      <span style={{ fontSize: 11, color: highlight ? 'var(--green)' : dim ? 'var(--text-muted)' : 'var(--text-primary)', fontFamily: mono ? 'var(--font-mono)' : 'inherit', textAlign: 'right', wordBreak: 'break-all' }}>{value}</span>
+    </div>
+  );
+}
+
+function SectionHeader({ step, label, done, active }) {
+  const color = done ? 'var(--green)' : active ? 'var(--accent)' : 'var(--text-muted)';
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 14, marginBottom: 6 }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color, fontFamily: 'var(--font-mono)' }}>
+        {done ? '✓' : active ? '▶' : '○'} {step}
+      </span>
+      <span style={{ fontSize: 11, fontWeight: 600, color }}>{label}</span>
+      <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+    </div>
+  );
+}
+
+function ExportProgressModal({
+  phase, format, vidWidth,
+  captureProgress, captureFrame, captureTotal, captureStepInfo,
+  encodeProgress, encodeStage, encodeWritten, encodeFrameCount,
+  encodeEncodedSec, encodeTotalSec, encodeElapsed, lastProgressRef,
+  outputBytes, outputDims,
+  downloadUrl, downloadName, exportError,
+  onReexport, onPreview, onCancel,
+}) {
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const isActive = phase === 'capturing' || phase === 'encoding';
+  const isDone = phase === 'done';
+  const isError = phase === 'error';
+
+  const overallRatio = phase === 'capturing'
+    ? captureProgress * 0.4
+    : phase === 'encoding'
+    ? 0.4 + (encodeStage === 'writing'
+        ? (encodeFrameCount > 0 ? (encodeWritten / encodeFrameCount) * 0.25 : 0)
+        : encodeStage === 'palette'
+        ? 0.25 + encodeProgress * 0.1
+        : encodeStage === 'encoding'
+        ? 0.35 + encodeProgress * 0.6
+        : 0)
+    : isDone ? 1 : 0;
+
+  const captureDone = phase === 'encoding' || isDone || isError;
+  const captureActive = phase === 'capturing';
+  const writeDone = encodeStage === 'palette' || encodeStage === 'encoding' || isDone;
+  const writeActive = encodeStage === 'writing';
+  const paletteDone = encodeStage === 'encoding' || isDone;
+  const paletteActive = encodeStage === 'palette';
+  const encodeDone = isDone;
+  const encodeActive = encodeStage === 'encoding';
+
+  const isGif = format === 'gif';
+  const isStalled = phase === 'encoding' && encodeElapsed - Math.round((Date.now() - lastProgressRef.current) / 1000) < -4;
+
+  const codecLabel = format === 'mp4' ? 'libx264 · fast preset · yuv420p'
+    : format === 'webm' ? 'libvpx-vp9 · CRF 30 · yuv420p'
+    : 'gif · palettegen + paletteuse';
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0,
+      background: 'rgba(0,0,0,0.72)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 800,
+      backdropFilter: 'blur(2px)',
+    }}>
+      <div style={{
+        width: 480, maxHeight: '85vh',
+        background: 'var(--bg-1)', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)', boxShadow: '0 24px 64px rgba(0,0,0,0.8)',
+        display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      }}>
+
+        {/* Modal header */}
+        <div style={{ padding: '12px 16px', background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: isDone ? 'var(--green)' : isError ? 'var(--red)' : 'var(--text-primary)', flex: 1 }}>
+              {isDone ? '✓ Export complete' : isError ? '✕ Export failed' : `Exporting ${format.toUpperCase()}…`}
+            </span>
+            {isActive && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                {Math.round(overallRatio * 100)}%
+              </span>
+            )}
+            {phase === 'encoding' && encodeElapsed > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                {encodeElapsed}s elapsed
+              </span>
+            )}
+            {isActive && (
+              <button
+                onClick={() => setConfirmingCancel(true)}
+                title="Cancel export"
+                style={{ width: 24, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                ✕
+              </button>
+            )}
+            {(isDone || isError) && (
+              <button
+                onClick={onReexport}
+                title="Close"
+                style={{ width: 24, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                ✕
+              </button>
+            )}
+          </div>
+          <MiniBar
+            ratio={overallRatio}
+            animated={false}
+            color={isDone ? 'var(--green)' : isError ? 'var(--red)' : 'var(--accent)'}
+            height={5}
+          />
+          {confirmingCancel && (
+            <div style={{ marginTop: 10, padding: '10px 12px', background: 'rgba(248,81,73,0.1)', border: '1px solid var(--red)', borderRadius: 'var(--radius-sm)' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-primary)', marginBottom: 8, lineHeight: 1.4 }}>
+                Cancel export? Progress will be lost and the current file will not be saved.
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  onClick={() => { setConfirmingCancel(false); onCancel(); }}
+                  style={{ padding: '5px 14px', background: 'var(--red)', border: 'none', borderRadius: 'var(--radius-sm)', color: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+                  Yes, cancel
+                </button>
+                <button
+                  onClick={() => setConfirmingCancel(false)}
+                  style={{ padding: '5px 12px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
+                  Keep going
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Scrollable detail body */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 16px' }}>
+
+          {/* ── Phase 1: Capture ── */}
+          <SectionHeader step="①" label="Capture frames" done={captureDone} active={captureActive} />
+          <div style={{ paddingLeft: 8 }}>
+            <LogRow label="Progress" value={captureTotal > 0 ? `${Math.min(captureFrame, captureTotal)} / ${captureTotal} frames  (${Math.round(captureProgress * 100)}%)` : '—'} />
+            <LogRow label="Current step" value={captureStepInfo?.kind ?? '—'} />
+            <LogRow label="Frame type" value={captureStepInfo ? (captureStepInfo.isIndicator ? 'indicator hold (×2)' : 'content') : '—'} dim />
+            <LogRow label="html2canvas" value={captureStepInfo?.h2cMs != null ? `${captureStepInfo.h2cMs}ms` : '—'} dim />
+            <LogRow label="rAF wait" value={captureStepInfo?.rafMs != null ? `${captureStepInfo.rafMs}ms` : '—'} dim />
+            <div style={{ marginTop: 6 }}>
+              <MiniBar ratio={captureDone ? 1 : captureProgress} color={captureDone ? 'var(--green)' : 'var(--accent)'} />
+            </div>
+          </div>
+
+          {/* ── Phase 2a: VFS write ── */}
+          <SectionHeader step="②" label="Write frames to WASM VFS" done={writeDone} active={writeActive} />
+          <div style={{ paddingLeft: 8 }}>
+            <LogRow label="Frames" value={encodeFrameCount > 0 ? `${encodeWritten} / ${encodeFrameCount} PNG` : '—'} />
+            <LogRow label="~Size" value={encodeWritten > 0 ? `~${((encodeWritten * 200) / 1024).toFixed(0)} KB written` : '—'} dim />
+            <LogRow label="ffconcat manifest" value={writeDone ? 'written' : '—'} highlight={writeDone} />
+            <div style={{ marginTop: 6 }}>
+              <MiniBar
+                ratio={writeDone ? 1 : (encodeFrameCount > 0 ? encodeWritten / encodeFrameCount : 0)}
+                color={writeDone ? 'var(--green)' : 'var(--accent)'}
+              />
+            </div>
+          </div>
+
+          {/* ── Phase 2b: GIF palette (GIF only) ── */}
+          {isGif && (
+            <>
+              <SectionHeader step="③" label="Generate GIF colour palette" done={paletteDone} active={paletteActive} />
+              <div style={{ paddingLeft: 8 }}>
+                <LogRow label="Command" value="palettegen (ffmpeg)" dim />
+                <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
+                <LogRow label="Palette" value={paletteDone ? 'generated' : '—'} highlight={paletteDone} />
+                <div style={{ marginTop: 6 }}>
+                  <MiniBar
+                    ratio={paletteDone ? 1 : encodeProgress}
+                    animated={paletteActive && encodeProgress === 0}
+                    color={paletteDone ? 'var(--green)' : 'var(--accent)'}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── Phase 3: Encode ── */}
+          <SectionHeader
+            step={isGif ? '④' : '③'}
+            label={`Encode ${format.toUpperCase()}`}
+            done={encodeDone}
+            active={encodeActive}
+          />
+          <div style={{ paddingLeft: 8 }}>
+            <LogRow label="Codec" value={codecLabel} dim />
+            <LogRow label="Resolution" value={outputDims?.outW ? `${outputDims.outW} × ${outputDims.outH}px` : '—'} />
+            <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
+            <LogRow label="Frame count" value={encodeFrameCount > 0 ? `${encodeFrameCount}` : '—'} />
+            <LogRow label="Encoded so far" value={encodeActive && encodeEncodedSec > 0 && encodeTotalSec > 0 ? `${encodeEncodedSec.toFixed(1)}s of ${encodeTotalSec.toFixed(1)}s` : '—'} />
+            <LogRow label="Output size" value={outputBytes > 0 ? `${(outputBytes / 1024 / 1024).toFixed(2)} MB` : '—'} highlight={outputBytes > 0} />
+            <LogRow label="Encode speed" value={encodeDone && encodeElapsed > 0 && encodeFrameCount > 0 ? `~${(encodeFrameCount / encodeElapsed).toFixed(0)} fps` : '—'} dim />
+            {isStalled && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+                <span style={{ fontSize: 10, animation: 'pulse-dot 1.2s ease-in-out infinite', display: 'inline-block', color: 'var(--yellow)' }}>●</span>
+                <span style={{ fontSize: 11, color: 'var(--yellow)' }}>Still encoding — ffmpeg is working, no progress events recently</span>
+                <style>{`@keyframes pulse-dot { 0%,100%{opacity:.3} 50%{opacity:1} }`}</style>
+              </div>
+            )}
+            <div style={{ marginTop: 6 }}>
+              <MiniBar
+                ratio={encodeDone ? 1 : encodeProgress}
+                animated={encodeActive && encodeProgress === 0}
+                color={encodeDone ? 'var(--green)' : 'var(--accent)'}
+              />
+            </div>
+          </div>
+
+          {/* ── Error ── */}
+          {isError && exportError && (
+            <div style={{ marginTop: 12, padding: '8px 12px', background: 'rgba(248,81,73,0.12)', border: '1px solid var(--red)', borderRadius: 4, fontSize: 12, color: 'var(--red)', lineHeight: 1.5 }}>
+              {exportError}
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        {(isDone || isError) && (
+          <div style={{ padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-2)', flexShrink: 0, display: 'flex', gap: 8 }}>
+            {isDone && downloadUrl && (
+              <>
+                <button onClick={onPreview}
+                  style={{ flex: 1, padding: '9px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'white' }}>
+                  ▶ Preview {format.toUpperCase()}
+                </button>
+                <a href={downloadUrl} download={downloadName}
+                  style={{ padding: '9px 18px', display: 'flex', alignItems: 'center', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
+                  ↓ Download
+                </a>
+              </>
+            )}
+            <button onClick={onReexport}
+              style={{ padding: '9px 14px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
+              {isError ? '↺ Try again' : 'Re-export'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Video preview modal ──────────────────────────────────────────────────────
 
 function VideoPreviewModal({ url, name, format, onClose }) {
@@ -591,18 +865,24 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
   const [format, setFormat] = useState('mp4');
   const [gifQuality, setGifQuality] = useState(10);
   const [vidWidth, setVidWidth] = useState(900);
+  const [filename, setFilename] = useState(filePrefix ?? 'session');
+
   const [phase, setPhase] = useState('idle');
   const [captureProgress, setCaptureProgress] = useState(0);
-  const [captureFrame, setCaptureFrame] = useState(0);   // frames captured so far
-  const [captureTotal, setCaptureTotal] = useState(0);   // total frames to capture
-  const [encodeProgress, setEncodeProgress] = useState(0); // 0..1
-  const [encodeStage, setEncodeStage] = useState('');      // 'writing' | 'palette' | 'encoding'
-  const [encodeWritten, setEncodeWritten] = useState(0);   // frames written to VFS
-  const [encodeEncodedSec, setEncodeEncodedSec] = useState(0); // seconds encoded so far
-  const [encodeTotalSec, setEncodeTotalSec] = useState(0);     // total video duration
+  const [captureFrame, setCaptureFrame] = useState(0);
+  const [captureTotal, setCaptureTotal] = useState(0);
+  const [captureStepInfo, setCaptureStepInfo] = useState(null);
+  const [encodeProgress, setEncodeProgress] = useState(0);
+  const [encodeStage, setEncodeStage] = useState('');
+  const [encodeWritten, setEncodeWritten] = useState(0);
+  const [encodeEncodedSec, setEncodeEncodedSec] = useState(0);
+  const [encodeTotalSec, setEncodeTotalSec] = useState(0);
   const [encodeElapsed, setEncodeElapsed] = useState(0);
   const [encodeFrameCount, setEncodeFrameCount] = useState(0);
-  const lastProgressRef = useRef(0); // timestamp of last progress event, for stall detection
+  const [outputBytes, setOutputBytes] = useState(0);
+  const [outputDims, setOutputDims] = useState(null);
+  const lastProgressRef = useRef(0);
+  const cancelRef = useRef(false);
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [downloadName, setDownloadName] = useState('');
   const [exportError, setExportError] = useState(null);
@@ -648,12 +928,16 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
 
   const doExport = useCallback(async () => {
     if (!hasClip) return;
+    cancelRef.current = false;
     setPhase('capturing');
     setCaptureProgress(0);
     setCaptureFrame(0);
     setCaptureTotal(0);
+    setCaptureStepInfo(null);
     setEncodeProgress(0);
     setEncodeFrameCount(0);
+    setOutputBytes(0);
+    setOutputDims(null);
     setExportError(null);
     setDownloadUrl(null);
 
@@ -661,23 +945,25 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       const preview = livePreviewRef.current;
       if (!preview?.previewEl) throw new Error('Preview not ready — please wait for the session to load.');
 
-      // Seed total before capture starts so the display is meaningful immediately
-      const INDICATOR_HOLD = 2; // matches captureFrames.js INDICATOR_HOLD_FRAMES
+      const INDICATOR_HOLD = 2;
       const visualSteps = preview.steps.filter(s => !['session-header','local-command-output','queue-op'].includes(s.kind));
-      setCaptureTotal(visualSteps.length * (1 + INDICATOR_HOLD));
+      const totalExpected = visualSteps.length * (1 + INDICATOR_HOLD);
+      setCaptureTotal(totalExpected);
 
-      let frameIdx = 0;
       const { frames, steps: capturedSteps } = await captureFrames({
         previewEl: preview.previewEl,
         steps: preview.steps,
         animatorRef: preview.animator,
-        onProgress: p => {
-          frameIdx = Math.round(p * visualSteps.length * (1 + INDICATOR_HOLD));
+        onProgress: (p, meta) => {
+          if (cancelRef.current) return;
+          const frameIdx = Math.round(p * totalExpected);
           setCaptureFrame(frameIdx);
           setCaptureProgress(p);
+          if (meta) setCaptureStepInfo(meta);
         },
       });
 
+      if (cancelRef.current) { setPhase('idle'); return; }
       if (!frames.length) throw new Error('No frames captured — clip range may contain only skipped steps.');
 
       const timing = preview.timing;
@@ -690,7 +976,7 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       setEncodeTotalSec(0);
 
       const handleEncodeProgress = (p) => {
-        if (!p) return;
+        if (!p || cancelRef.current) return;
         lastProgressRef.current = Date.now();
         setEncodeStage(p.stage ?? '');
         if (p.stage === 'writing') setEncodeWritten(p.framesDone ?? 0);
@@ -698,6 +984,10 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
           setEncodeProgress(p.ratio ?? 0);
           setEncodeEncodedSec(p.encodedSec ?? 0);
           setEncodeTotalSec(p.totalSec ?? 0);
+        }
+        if (p.stage === 'done') {
+          setOutputBytes(p.outputBytes ?? 0);
+          setOutputDims(p.outW ? { outW: p.outW, outH: p.outH } : null);
         }
       };
       lastProgressRef.current = Date.now();
@@ -711,18 +1001,23 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
         blob = await encodeWebm({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: handleEncodeProgress });
       }
 
+      if (cancelRef.current) { setPhase('idle'); return; }
+      const safeFilename = (filename.trim() || filePrefix || 'session').replace(/[^a-zA-Z0-9._-]/g, '-');
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
-      setDownloadName(`${filePrefix ?? 'session'}-${clips.length}clip${clips.length !== 1 ? 's' : ''}.${format}`);
+      setDownloadName(`${safeFilename}-${clips.length}clip${clips.length !== 1 ? 's' : ''}.${format}`);
       setPhase('done');
-      setShowPreview(true);
     } catch (e) {
+      if (cancelRef.current) { setPhase('idle'); return; }
       setExportError(e.message || String(e));
       setPhase('error');
     }
-  }, [hasClip, format, gifQuality, vidWidth, filePrefix, clips]);
+  }, [hasClip, format, gifQuality, vidWidth, filename, filePrefix, clips]);
 
-  const isExporting = phase === 'capturing' || phase === 'encoding';
+  const handleCancel = useCallback(() => {
+    cancelRef.current = true;
+    setPhase('idle');
+  }, []);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
@@ -742,6 +1037,34 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
           name={downloadName}
           format={format}
           onClose={() => setShowPreview(false)}
+        />
+      )}
+
+      {(phase === 'capturing' || phase === 'encoding' || phase === 'done' || phase === 'error') && (
+        <ExportProgressModal
+          phase={phase}
+          format={format}
+          vidWidth={vidWidth}
+          captureProgress={captureProgress}
+          captureFrame={captureFrame}
+          captureTotal={captureTotal}
+          captureStepInfo={captureStepInfo}
+          encodeProgress={encodeProgress}
+          encodeStage={encodeStage}
+          encodeWritten={encodeWritten}
+          encodeFrameCount={encodeFrameCount}
+          encodeEncodedSec={encodeEncodedSec}
+          encodeTotalSec={encodeTotalSec}
+          encodeElapsed={encodeElapsed}
+          lastProgressRef={lastProgressRef}
+          outputBytes={outputBytes}
+          outputDims={outputDims}
+          downloadUrl={downloadUrl}
+          downloadName={downloadName}
+          exportError={exportError}
+          onReexport={() => { setDownloadUrl(null); setPhase('idle'); setShowPreview(false); }}
+          onPreview={() => setShowPreview(true)}
+          onCancel={handleCancel}
         />
       )}
 
@@ -890,129 +1213,26 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
           </div>
 
           {/* Export footer */}
-          <div style={{ padding: '14px 16px', background: 'var(--bg-1)', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
-
-            {(isExporting || phase === 'done') && (
-              <div style={{ marginBottom: 12 }}>
-
-                {/* Phase label + detail */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>
-                    {phase === 'capturing' ? '① Capturing preview frames'
-                      : phase === 'encoding' ? `② Encoding ${format.toUpperCase()}`
-                      : '✓ Export complete'}
-                  </span>
-                  {phase === 'capturing' && (
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {Math.round(captureProgress * 100)}%
-                    </span>
-                  )}
-                  {phase === 'encoding' && (
-                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
-                      {encodeElapsed > 0 ? `${encodeElapsed}s elapsed` : '…'}
-                    </span>
-                  )}
-                </div>
-
-                {/* Detail line */}
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
-                  {phase === 'capturing' && captureTotal > 0 &&
-                    `Frame ${Math.min(captureFrame, captureTotal)} of ${captureTotal} — screenshotting live preview`}
-                  {phase === 'encoding' && encodeStage === 'writing' &&
-                    `Writing ${encodeWritten} / ${encodeFrameCount} frames to VFS…`}
-                  {phase === 'encoding' && encodeStage === 'palette' &&
-                    `Generating GIF colour palette from ${encodeFrameCount} frames… (${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : ''})`}
-                  {phase === 'encoding' && encodeStage === 'encoding' && (
-                    `Encoding ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px · ${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : ''}${encodeProgress >= 0.99 ? ' · finalising…' : ''}`
-                  )}
-                  {phase === 'encoding' && !encodeStage &&
-                    `Preparing ${encodeFrameCount} frames…`}
-                  {phase === 'done' && downloadUrl &&
-                    `${encodeFrameCount} frames encoded · ${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video · ` : ''}ready to preview or download`}
-                </div>
-
-                {/* Stall reassurance — shown when ffmpeg goes quiet for >4s */}
-                {phase === 'encoding' && encodeElapsed - Math.round((Date.now() - lastProgressRef.current) / 1000) < -4 && (
-                  <div style={{ fontSize: 10, color: 'var(--yellow)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
-                    <span style={{ animation: 'pulse-dot 1.2s ease-in-out infinite', display: 'inline-block' }}>●</span>
-                    Still encoding — ffmpeg is working, no progress events received recently
-                    <style>{`@keyframes pulse-dot { 0%,100%{opacity:.3} 50%{opacity:1} }`}</style>
-                  </div>
-                )}
-
-                {/* Capture phase: determinate bar */}
-                {phase === 'capturing' && (
-                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 5 }}>
-                    <div style={{ width: `${Math.round(captureProgress * 100)}%`, height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.15s' }} />
-                  </div>
-                )}
-
-                {/* Encoding phase — all stages now determinate (VFR approach = O(frames)) */}
-                {phase === 'encoding' && (
-                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 5, overflow: 'hidden', position: 'relative' }}>
-                    {(encodeStage === 'encoding' || encodeStage === 'palette') && encodeProgress > 0 ? (
-                      <div style={{
-                        width: `${Math.round(encodeProgress * 100)}%`,
-                        height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s',
-                      }} />
-                    ) : encodeStage === 'writing' && encodeFrameCount > 0 ? (
-                      <div style={{
-                        width: `${Math.round((encodeWritten / encodeFrameCount) * 100)}%`,
-                        height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.1s',
-                      }} />
-                    ) : (
-                      <>
-                        <div style={{
-                          position: 'absolute', height: '100%', width: '35%',
-                          background: 'var(--accent)', borderRadius: 2,
-                          animation: 'encode-sweep 1.4s ease-in-out infinite',
-                        }} />
-                        <style>{`@keyframes encode-sweep { 0% { left: -35%; } 100% { left: 135%; } }`}</style>
-                      </>
-                    )}
-                  </div>
-                )}
-
-                {/* Done: full green bar */}
-                {phase === 'done' && (
-                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 6 }}>
-                    <div style={{ width: '100%', height: '100%', background: 'var(--green)', borderRadius: 2 }} />
-                  </div>
-                )}
+          <div style={{ padding: '12px 16px', background: 'var(--bg-1)', borderTop: '1px solid var(--border)', flexShrink: 0 }}>
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Filename</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 0, background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'hidden' }}>
+                <input
+                  type="text"
+                  value={filename}
+                  onChange={e => setFilename(e.target.value)}
+                  spellCheck={false}
+                  style={{ flex: 1, padding: '5px 8px', background: 'transparent', border: 'none', outline: 'none', color: 'var(--text-primary)', fontSize: 12, fontFamily: 'var(--font-mono)' }}
+                />
+                <span style={{ padding: '5px 8px', color: 'var(--text-muted)', fontSize: 12, fontFamily: 'var(--font-mono)', borderLeft: '1px solid var(--border)', background: 'var(--bg-3)', flexShrink: 0 }}>
+                  -{clips.length}clip{clips.length !== 1 ? 's' : ''}.{format}
+                </span>
               </div>
-            )}
-
-            {exportError && (
-              <div style={{ fontSize: 12, color: 'var(--red)', background: 'rgba(248,81,73,0.1)', padding: '7px 12px', borderRadius: 4, marginBottom: 10 }}>
-                {exportError}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              {phase === 'done' && downloadUrl ? (
-                <>
-                  <button onClick={() => setShowPreview(true)}
-                    style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--accent-dim)', border: '1px solid var(--accent)', color: 'white' }}>
-                    ▶ Preview {format.toUpperCase()}
-                  </button>
-                  <a href={downloadUrl} download={downloadName}
-                    style={{ padding: '10px 16px', display: 'flex', alignItems: 'center', background: 'var(--green)', color: 'var(--bg-0)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>
-                    ↓ Download
-                  </a>
-                  <button onClick={() => { setDownloadUrl(null); setPhase('idle'); setShowPreview(false); }}
-                    style={{ padding: '10px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
-                    Re-export
-                  </button>
-                </>
-              ) : (
-                <button onClick={doExport} disabled={!hasClip || isExporting}
-                  style={{ flex: 1, padding: '10px', fontSize: 13, fontWeight: 600, cursor: (!hasClip || isExporting) ? 'not-allowed' : 'pointer', borderRadius: 'var(--radius-sm)', background: (!hasClip || isExporting) ? 'var(--bg-3)' : 'var(--accent-dim)', border: `1px solid ${(!hasClip || isExporting) ? 'var(--border)' : 'var(--accent)'}`, color: (!hasClip || isExporting) ? 'var(--text-muted)' : 'white', opacity: !hasClip ? 0.5 : 1 }}>
-                  {isExporting ? 'Exporting…'
-                    : !hasClip ? 'Set clip range first'
-                    : `Export ${format.toUpperCase()} — ${clipLength} steps`}
-                </button>
-              )}
             </div>
+            <button onClick={doExport} disabled={!hasClip}
+              style={{ width: '100%', padding: '10px', fontSize: 13, fontWeight: 600, cursor: !hasClip ? 'not-allowed' : 'pointer', borderRadius: 'var(--radius-sm)', background: !hasClip ? 'var(--bg-3)' : 'var(--accent-dim)', border: `1px solid ${!hasClip ? 'var(--border)' : 'var(--accent)'}`, color: !hasClip ? 'var(--text-muted)' : 'white', opacity: !hasClip ? 0.5 : 1 }}>
+              {!hasClip ? 'Set clip range first' : `Export ${format.toUpperCase()} — ${clipLength} steps`}
+            </button>
           </div>
         </div>
       </div>
