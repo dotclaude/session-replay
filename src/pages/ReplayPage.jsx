@@ -108,7 +108,7 @@ export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo
   const searchMatchSet = useMemo(() => new Set(searchMatches), [searchMatches]);
 
   const handleBack = backTo
-    ? () => { if (backTo.startsWith('http') || backTo.startsWith('/')) { window.location.href = backTo; } else { navigate(backTo); } }
+    ? () => { if (backTo.startsWith('http')) { window.location.href = backTo; } else { navigate(backTo); } }
     : () => navigate('/');
 
   return (
