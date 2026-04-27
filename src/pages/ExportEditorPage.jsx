@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { parseSession } from '../lib/parser/parseSession.js';
 import { buildSteps } from '../lib/parser/buildSteps.js';
 import { captureFrames } from '../lib/export/captureFrames.js';
-import { encodeGif, encodeMp4, encodeWebm } from '../lib/export/encodeVideo.js';
+import { encodeGif } from '../lib/export/encodeVideo.js';
+import { exportViaCanvas } from '../lib/export/canvasExport.js';
 import StageRenderer from '../components/stages/StageRenderer.jsx';
 import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
@@ -593,13 +594,16 @@ function ExportProgressModal({
   outputBytes, outputDims,
   downloadUrl, downloadName, exportError,
   onReexport, onPreview, onCancel,
+  canvasPath,
 }) {
   const [confirmingCancel, setConfirmingCancel] = useState(false);
-  const isActive = phase === 'capturing' || phase === 'encoding';
+  const isActive = phase === 'capturing' || phase === 'encoding' || phase === 'rendering';
   const isDone = phase === 'done';
   const isError = phase === 'error';
 
-  const overallRatio = phase === 'capturing'
+  const overallRatio = canvasPath
+    ? (phase === 'rendering' ? captureProgress : isDone ? 1 : 0)
+    : phase === 'capturing'
     ? captureProgress * 0.4
     : phase === 'encoding'
     ? 0.4 + (encodeStage === 'writing'
@@ -646,7 +650,7 @@ function ExportProgressModal({
         <div style={{ padding: '12px 16px', background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: isDone ? 'var(--green)' : isError ? 'var(--red)' : 'var(--text-primary)', flex: 1 }}>
-              {isDone ? '✓ Export complete' : isError ? '✕ Export failed' : `Exporting ${format.toUpperCase()}…`}
+              {isDone ? '✓ Export complete' : isError ? '✕ Export failed' : phase === 'rendering' ? `Rendering ${format.toUpperCase()}…` : `Exporting ${format.toUpperCase()}…`}
             </span>
             {isActive && (
               <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
@@ -705,82 +709,109 @@ function ExportProgressModal({
         {/* Scrollable detail body */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 16px 16px' }}>
 
-          {/* ── Phase 1: Capture ── */}
-          <SectionHeader step="①" label="Capture frames" done={captureDone} active={captureActive} />
-          <div style={{ paddingLeft: 8 }}>
-            <LogRow label="Progress" value={captureTotal > 0 ? `${Math.min(captureFrame, captureTotal)} / ${captureTotal} frames  (${Math.round(captureProgress * 100)}%)` : '—'} />
-            <LogRow label="Current step" value={captureStepInfo?.kind ?? '—'} />
-            <LogRow label="Frame type" value={captureStepInfo ? (captureStepInfo.isIndicator ? 'indicator (animated pulse)' : 'content') : '—'} dim />
-            <LogRow label="html2canvas" value={captureStepInfo?.h2cMs != null ? `${captureStepInfo.h2cMs}ms` : '—'} dim />
-            <LogRow label="rAF wait" value={captureStepInfo?.rafMs != null ? `${captureStepInfo.rafMs}ms` : '—'} dim />
-            <div style={{ marginTop: 6 }}>
-              <MiniBar ratio={captureDone ? 1 : captureProgress} color={captureDone ? 'var(--green)' : 'var(--accent)'} />
-            </div>
-          </div>
-
-          {/* ── Phase 2a: VFS write ── */}
-          <SectionHeader step="②" label="Write frames to WASM VFS" done={writeDone} active={writeActive} />
-          <div style={{ paddingLeft: 8 }}>
-            <LogRow label="Frames" value={encodeFrameCount > 0 ? `${encodeWritten} / ${encodeFrameCount} PNG` : '—'} />
-            <LogRow label="~Size" value={encodeWritten > 0 ? `~${((encodeWritten * 200) / 1024).toFixed(0)} KB written` : '—'} dim />
-            <LogRow label="ffconcat manifest" value={writeDone ? 'written' : '—'} highlight={writeDone} />
-            <div style={{ marginTop: 6 }}>
-              <MiniBar
-                ratio={writeDone ? 1 : (encodeFrameCount > 0 ? encodeWritten / encodeFrameCount : 0)}
-                color={writeDone ? 'var(--green)' : 'var(--accent)'}
-              />
-            </div>
-          </div>
-
-          {/* ── Phase 2b: GIF palette (GIF only) ── */}
-          {isGif && (
+          {canvasPath ? (
             <>
-              <SectionHeader step="③" label="Generate GIF colour palette" done={paletteDone} active={paletteActive} />
+              {/* ── Canvas path: Phase 1 — Build plan ── */}
+              <SectionHeader step="①" label="Build frame plan" done={captureTotal > 0} active={phase === 'rendering' && captureTotal === 0} />
               <div style={{ paddingLeft: 8 }}>
-                <LogRow label="Command" value="palettegen (ffmpeg)" dim />
-                <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
-                <LogRow label="Palette" value={paletteDone ? 'generated' : '—'} highlight={paletteDone} />
+                <LogRow label="Frames planned" value={captureTotal > 0 ? `${captureTotal}` : '—'} />
+              </div>
+
+              {/* ── Canvas path: Phase 2 — Render & encode ── */}
+              <SectionHeader step="②" label="Render & encode" done={isDone} active={phase === 'rendering'} />
+              <div style={{ paddingLeft: 8 }}>
+                <LogRow label="Progress" value={captureTotal > 0 ? `${captureFrame} / ${captureTotal} frames  (${Math.round(captureProgress * 100)}%)` : '—'} />
+                <LogRow label="Frame type" value={captureStepInfo?.frameType ?? '—'} dim />
+                <LogRow label="Output size" value={outputBytes > 0 ? `${(outputBytes / 1024 / 1024).toFixed(2)} MB` : '—'} highlight={outputBytes > 0} />
                 <div style={{ marginTop: 6 }}>
                   <MiniBar
-                    ratio={paletteDone ? 1 : encodeProgress}
-                    animated={paletteActive && encodeProgress === 0}
-                    color={paletteDone ? 'var(--green)' : 'var(--accent)'}
+                    ratio={isDone ? 1 : captureProgress}
+                    animated={phase === 'rendering' && captureStepInfo?.frameType === 'flushing encoder…'}
+                    color={isDone ? 'var(--green)' : 'var(--accent)'}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* ── Phase 1: Capture ── */}
+              <SectionHeader step="①" label="Capture frames" done={captureDone} active={captureActive} />
+              <div style={{ paddingLeft: 8 }}>
+                <LogRow label="Progress" value={captureTotal > 0 ? `${Math.min(captureFrame, captureTotal)} / ${captureTotal} frames  (${Math.round(captureProgress * 100)}%)` : '—'} />
+                <LogRow label="Current step" value={captureStepInfo?.kind ?? '—'} />
+                <LogRow label="Frame type" value={captureStepInfo ? (captureStepInfo.isIndicator ? 'indicator (animated pulse)' : 'content') : '—'} dim />
+                <LogRow label="html2canvas" value={captureStepInfo?.h2cMs != null ? `${captureStepInfo.h2cMs}ms` : '—'} dim />
+                <LogRow label="rAF wait" value={captureStepInfo?.rafMs != null ? `${captureStepInfo.rafMs}ms` : '—'} dim />
+                <div style={{ marginTop: 6 }}>
+                  <MiniBar ratio={captureDone ? 1 : captureProgress} color={captureDone ? 'var(--green)' : 'var(--accent)'} />
+                </div>
+              </div>
+
+              {/* ── Phase 2a: VFS write ── */}
+              <SectionHeader step="②" label="Write frames to WASM VFS" done={writeDone} active={writeActive} />
+              <div style={{ paddingLeft: 8 }}>
+                <LogRow label="Frames" value={encodeFrameCount > 0 ? `${encodeWritten} / ${encodeFrameCount} PNG` : '—'} />
+                <LogRow label="~Size" value={encodeWritten > 0 ? `~${((encodeWritten * 200) / 1024).toFixed(0)} KB written` : '—'} dim />
+                <LogRow label="ffconcat manifest" value={writeDone ? 'written' : '—'} highlight={writeDone} />
+                <div style={{ marginTop: 6 }}>
+                  <MiniBar
+                    ratio={writeDone ? 1 : (encodeFrameCount > 0 ? encodeWritten / encodeFrameCount : 0)}
+                    color={writeDone ? 'var(--green)' : 'var(--accent)'}
+                  />
+                </div>
+              </div>
+
+              {/* ── Phase 2b: GIF palette (GIF only) ── */}
+              {isGif && (
+                <>
+                  <SectionHeader step="③" label="Generate GIF colour palette" done={paletteDone} active={paletteActive} />
+                  <div style={{ paddingLeft: 8 }}>
+                    <LogRow label="Command" value="palettegen (ffmpeg)" dim />
+                    <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
+                    <LogRow label="Palette" value={paletteDone ? 'generated' : '—'} highlight={paletteDone} />
+                    <div style={{ marginTop: 6 }}>
+                      <MiniBar
+                        ratio={paletteDone ? 1 : encodeProgress}
+                        animated={paletteActive && encodeProgress === 0}
+                        color={paletteDone ? 'var(--green)' : 'var(--accent)'}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* ── Phase 3: Encode ── */}
+              <SectionHeader
+                step={isGif ? '④' : '③'}
+                label={`Encode ${format.toUpperCase()}`}
+                done={encodeDone}
+                active={encodeActive}
+              />
+              <div style={{ paddingLeft: 8 }}>
+                <LogRow label="Codec" value={codecLabel} dim />
+                <LogRow label="Resolution" value={outputDims?.outW ? `${outputDims.outW} × ${outputDims.outH}px` : '—'} />
+                <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
+                <LogRow label="Frame count" value={encodeFrameCount > 0 ? `${encodeFrameCount}` : '—'} />
+                <LogRow label="Encoded so far" value={encodeActive && encodeEncodedSec > 0 && encodeTotalSec > 0 ? `${encodeEncodedSec.toFixed(1)}s of ${encodeTotalSec.toFixed(1)}s` : '—'} />
+                <LogRow label="Output size" value={outputBytes > 0 ? `${(outputBytes / 1024 / 1024).toFixed(2)} MB` : '—'} highlight={outputBytes > 0} />
+                <LogRow label="Encode speed" value={encodeDone && encodeElapsed > 0 && encodeFrameCount > 0 ? `~${(encodeFrameCount / encodeElapsed).toFixed(0)} fps` : '—'} dim />
+                {isStalled && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
+                    <span style={{ fontSize: 10, animation: 'pulse-dot 1.2s ease-in-out infinite', display: 'inline-block', color: 'var(--yellow)' }}>●</span>
+                    <span style={{ fontSize: 11, color: 'var(--yellow)' }}>Still encoding — ffmpeg is working, no progress events recently</span>
+                    <style>{`@keyframes pulse-dot { 0%,100%{opacity:.3} 50%{opacity:1} }`}</style>
+                  </div>
+                )}
+                <div style={{ marginTop: 6 }}>
+                  <MiniBar
+                    ratio={encodeDone ? 1 : encodeProgress}
+                    animated={encodeActive && encodeProgress === 0}
+                    color={encodeDone ? 'var(--green)' : 'var(--accent)'}
                   />
                 </div>
               </div>
             </>
           )}
-
-          {/* ── Phase 3: Encode ── */}
-          <SectionHeader
-            step={isGif ? '④' : '③'}
-            label={`Encode ${format.toUpperCase()}`}
-            done={encodeDone}
-            active={encodeActive}
-          />
-          <div style={{ paddingLeft: 8 }}>
-            <LogRow label="Codec" value={codecLabel} dim />
-            <LogRow label="Resolution" value={outputDims?.outW ? `${outputDims.outW} × ${outputDims.outH}px` : '—'} />
-            <LogRow label="Video duration" value={encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s` : '—'} />
-            <LogRow label="Frame count" value={encodeFrameCount > 0 ? `${encodeFrameCount}` : '—'} />
-            <LogRow label="Encoded so far" value={encodeActive && encodeEncodedSec > 0 && encodeTotalSec > 0 ? `${encodeEncodedSec.toFixed(1)}s of ${encodeTotalSec.toFixed(1)}s` : '—'} />
-            <LogRow label="Output size" value={outputBytes > 0 ? `${(outputBytes / 1024 / 1024).toFixed(2)} MB` : '—'} highlight={outputBytes > 0} />
-            <LogRow label="Encode speed" value={encodeDone && encodeElapsed > 0 && encodeFrameCount > 0 ? `~${(encodeFrameCount / encodeElapsed).toFixed(0)} fps` : '—'} dim />
-            {isStalled && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
-                <span style={{ fontSize: 10, animation: 'pulse-dot 1.2s ease-in-out infinite', display: 'inline-block', color: 'var(--yellow)' }}>●</span>
-                <span style={{ fontSize: 11, color: 'var(--yellow)' }}>Still encoding — ffmpeg is working, no progress events recently</span>
-                <style>{`@keyframes pulse-dot { 0%,100%{opacity:.3} 50%{opacity:1} }`}</style>
-              </div>
-            )}
-            <div style={{ marginTop: 6 }}>
-              <MiniBar
-                ratio={encodeDone ? 1 : encodeProgress}
-                animated={encodeActive && encodeProgress === 0}
-                color={encodeDone ? 'var(--green)' : 'var(--accent)'}
-              />
-            </div>
-          </div>
 
           {/* ── Error ── */}
           {isError && exportError && (
@@ -842,7 +873,7 @@ function VideoPreviewModal({ url, name, format, onClose }) {
           {format === 'gif' ? (
             <img src={url} alt={name} style={{ maxWidth: '85vw', maxHeight: '80vh', objectFit: 'contain', display: 'block' }} />
           ) : (
-            <video src={url} controls style={{ maxWidth: '85vw', maxHeight: '80vh', display: 'block' }} />
+            <video src={url} controls style={{ maxWidth: '85vw', maxHeight: '80vh', display: 'block', background: '#0d1117' }} />
           )}
         </div>
       </div>
@@ -929,7 +960,6 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
   const doExport = useCallback(async () => {
     if (!hasClip) return;
     cancelRef.current = false;
-    setPhase('capturing');
     setCaptureProgress(0);
     setCaptureFrame(0);
     setCaptureTotal(0);
@@ -943,15 +973,62 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
 
     try {
       const preview = livePreviewRef.current;
+      const timing = preview?.timing;
+      const safeFilename = (filename.trim() || filePrefix || 'session').replace(/[^a-zA-Z0-9._-]/g, '-');
+      const outName = `${safeFilename}-${clips.length}clip${clips.length !== 1 ? 's' : ''}.${format}`;
+
+      if (format !== 'gif') {
+        // MP4 / WebM — canvas-native render + WebCodecs encode
+        if (typeof VideoEncoder === 'undefined') {
+          throw new Error('WebCodecs (VideoEncoder) is not available in this browser. Use Chrome 94+, Edge 94+, or Firefox 130+.');
+        }
+        setPhase('rendering');
+
+        const result = await exportViaCanvas({
+          steps: preview.steps,
+          clips,
+          timing,
+          renderMode,
+          format,
+          width: vidWidth,
+          onProgress: (p) => {
+            if (cancelRef.current) return;
+            if (p.stage === 'planning') {
+              setCaptureTotal(p.framesTotal ?? 0);
+            } else if (p.stage === 'rendering') {
+              setCaptureTotal(p.framesTotal ?? 0);
+              setCaptureFrame(p.framesDone ?? 0);
+              setCaptureProgress((p.framesDone ?? 0) / Math.max(p.framesTotal ?? 1, 1));
+              if (p.frameType) setCaptureStepInfo({ frameType: p.frameType });
+            } else if (p.stage === 'flushing') {
+              setCaptureStepInfo({ frameType: 'flushing encoder…' });
+            } else if (p.stage === 'done') {
+              setCaptureProgress(1);
+            }
+          },
+        });
+
+        if (cancelRef.current) { setPhase('idle'); return; }
+        const { blob, format: actualFormat } = result;
+        setOutputBytes(blob.size);
+        setDownloadUrl(URL.createObjectURL(blob));
+        // Use actual format for filename extension (Firefox mp4→webm reroute)
+        const actualOutName = actualFormat !== format
+          ? outName.replace(/\.[^.]+$/, `.${actualFormat}`)
+          : outName;
+        setDownloadName(actualOutName);
+        setPhase('done');
+        return;
+      }
+
+      // GIF — html2canvas capture + gif.js encode
+      setPhase('capturing');
       if (!preview?.previewEl) throw new Error('Preview not ready — please wait for the session to load.');
 
-      // Estimate total frame count for progress display.
-      // Animated indicator generates up to 32 frames per step — use avg of 8 as estimate.
       const visualSteps = preview.steps.filter(s => !['session-header','local-command-output','queue-op'].includes(s.kind));
       const totalExpected = visualSteps.length * (1 + 8);
       setCaptureTotal(totalExpected);
 
-      const timing = preview.timing;
       const { frames, steps: capturedSteps, durations: capturedDurations, revokeAll } = await captureFrames({
         previewEl: preview.previewEl,
         steps: preview.steps,
@@ -959,8 +1036,7 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
         timing,
         onProgress: (p, meta) => {
           if (cancelRef.current) return;
-          const frameIdx = Math.round(p * totalExpected);
-          setCaptureFrame(frameIdx);
+          setCaptureFrame(Math.round(p * totalExpected));
           setCaptureProgress(p);
           if (meta) setCaptureStepInfo(meta);
         },
@@ -975,50 +1051,42 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       setEncodeWritten(0);
       setEncodeEncodedSec(0);
       setEncodeTotalSec(0);
-
-      const handleEncodeProgress = (p) => {
-        if (!p || cancelRef.current) return;
-        lastProgressRef.current = Date.now();
-        setEncodeStage(p.stage ?? '');
-        if (p.stage === 'writing') setEncodeWritten(p.framesDone ?? 0);
-        if (p.stage === 'encoding' || p.stage === 'palette') {
-          setEncodeProgress(p.ratio ?? 0);
-          setEncodeEncodedSec(p.encodedSec ?? 0);
-          setEncodeTotalSec(p.totalSec ?? 0);
-        }
-        if (p.stage === 'done') {
-          setOutputBytes(p.outputBytes ?? 0);
-          setOutputDims(p.outW ? { outW: p.outW, outH: p.outH } : null);
-        }
-      };
       lastProgressRef.current = Date.now();
 
       let blob;
       try {
-        if (format === 'gif') {
-          blob = await encodeGif({ frames, steps: capturedSteps, durations: capturedDurations, timing, quality: gifQuality, onProgress: handleEncodeProgress });
-        } else if (format === 'mp4') {
-          blob = await encodeMp4({ frames, steps: capturedSteps, durations: capturedDurations, timing, width: vidWidth, onProgress: handleEncodeProgress });
-        } else {
-          blob = await encodeWebm({ frames, steps: capturedSteps, durations: capturedDurations, timing, width: vidWidth, onProgress: handleEncodeProgress });
-        }
+        blob = await encodeGif({
+          frames, steps: capturedSteps, durations: capturedDurations, timing, quality: gifQuality,
+          onProgress: (p) => {
+            if (!p || cancelRef.current) return;
+            lastProgressRef.current = Date.now();
+            setEncodeStage(p.stage ?? '');
+            if (p.stage === 'writing') setEncodeWritten(p.framesDone ?? 0);
+            if (p.stage === 'encoding' || p.stage === 'palette') {
+              setEncodeProgress(p.ratio ?? 0);
+              setEncodeEncodedSec(p.encodedSec ?? 0);
+              setEncodeTotalSec(p.totalSec ?? 0);
+            }
+            if (p.stage === 'done') {
+              setOutputBytes(p.outputBytes ?? 0);
+              setOutputDims(p.outW ? { outW: p.outW, outH: p.outH } : null);
+            }
+          },
+        });
       } finally {
-        // Release all Blob URLs now that ffmpeg has read the frames into VFS.
         revokeAll?.();
       }
 
       if (cancelRef.current) { setPhase('idle'); return; }
-      const safeFilename = (filename.trim() || filePrefix || 'session').replace(/[^a-zA-Z0-9._-]/g, '-');
-      const url = URL.createObjectURL(blob);
-      setDownloadUrl(url);
-      setDownloadName(`${safeFilename}-${clips.length}clip${clips.length !== 1 ? 's' : ''}.${format}`);
+      setDownloadUrl(URL.createObjectURL(blob));
+      setDownloadName(outName);
       setPhase('done');
     } catch (e) {
       if (cancelRef.current) { setPhase('idle'); return; }
       setExportError(e.message || String(e));
       setPhase('error');
     }
-  }, [hasClip, format, gifQuality, vidWidth, filename, filePrefix, clips]);
+  }, [hasClip, format, gifQuality, vidWidth, filename, filePrefix, clips, renderMode]);
 
   const handleCancel = useCallback(() => {
     cancelRef.current = true;
@@ -1046,7 +1114,7 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
         />
       )}
 
-      {(phase === 'capturing' || phase === 'encoding' || phase === 'done' || phase === 'error') && (
+      {(phase === 'capturing' || phase === 'encoding' || phase === 'rendering' || phase === 'done' || phase === 'error') && (
         <ExportProgressModal
           phase={phase}
           format={format}
@@ -1071,6 +1139,7 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
           onReexport={() => { setDownloadUrl(null); setPhase('idle'); setShowPreview(false); }}
           onPreview={() => setShowPreview(true)}
           onCancel={handleCancel}
+          canvasPath={format !== 'gif'}
         />
       )}
 
@@ -1198,8 +1267,9 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
               )}
 
               <div style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--bg-2)', padding: '7px 10px', borderRadius: 4, lineHeight: 1.5 }}>
-                {format === 'gif' ? 'Browser-encoded via gif.js — no upload, no server.'
-                  : `Browser-encoded via ffmpeg.wasm — no upload, no server.${format === 'mp4' ? ' First run loads ~5MB WASM once.' : ''}`}
+                {format === 'gif'
+                  ? 'Browser-encoded via gif.js — no upload, no server.'
+                  : 'Canvas-native render + WebCodecs encode — no WASM, no CDN. Requires Chrome 94+ / Firefox 130+.'}
               </div>
             </div>
           </div>

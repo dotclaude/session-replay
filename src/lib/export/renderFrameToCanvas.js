@@ -148,7 +148,7 @@ function measureCardHeight(ctx, step, revealFraction, cardW) {
 }
 
 // Draw a single card at position y, returns the height used.
-function drawCard(ctx, step, revealFraction, x, y, cardW, isCurrent) {
+function drawCard(ctx, step, revealFraction, x, y, cardW, isCurrent, currentFraction = 1) {
   const BAR_W = 3;
   const HEADER_H = 32;
   const BODY_PAD = 12;
@@ -173,7 +173,8 @@ function drawCard(ctx, step, revealFraction, x, y, cardW, isCurrent) {
 
   // Current step highlight border
   if (isCurrent) {
-    ctx.strokeStyle = meta.accent + '55';
+    const hexAlpha = Math.round(currentFraction * 0x55).toString(16).padStart(2, '0');
+    ctx.strokeStyle = meta.accent + hexAlpha;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.roundRect(x, y, cardW, cardH, 6);
@@ -239,7 +240,7 @@ function drawCard(ctx, step, revealFraction, x, y, cardW, isCurrent) {
 }
 
 // Draw the "Claude is..." processing indicator row.
-function drawProcessingIndicator(ctx, message, x, y, cardW) {
+function drawProcessingIndicator(ctx, message, x, y, cardW, animT = 0) {
   const H = 36;
   ctx.fillStyle = BG1;
   ctx.strokeStyle = BORDER;
@@ -249,14 +250,19 @@ function drawProcessingIndicator(ctx, message, x, y, cardW) {
   ctx.fill();
   ctx.stroke();
 
-  // Dots
+  // Animated dots
+  const DELAYS = [0, 200, 400];
   const dotY = y + H / 2;
   const dotX0 = x + 14;
   for (let d = 0; d < 3; d++) {
+    const phase = ((animT + DELAYS[d]) % 1400) / 1400;
+    const opacity = 0.3 + 0.7 * Math.pow(Math.sin(Math.PI * phase), 2);
+    ctx.globalAlpha = opacity;
     ctx.beginPath();
     ctx.arc(dotX0 + d * 10, dotY, 3, 0, Math.PI * 2);
     ctx.fillStyle = ACCENT;
     ctx.fill();
+    ctx.globalAlpha = 1;
   }
 
   ctx.font = `11px ${SANS}`;
@@ -273,10 +279,11 @@ function drawProcessingIndicator(ctx, message, x, y, cardW) {
  *   'focused' — current step at bottom (full size), up to 2 prior steps shown above it dimmed
  */
 
-function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   const PAD_X = 16;
   const GAP = 6;
   const cardW = W - PAD_X * 2;
+  const currentFraction = Math.min(animT / 200, 1);
 
   const heights = history.map((step, i) => {
     const frac = i === history.length - 1 ? lastRevealFraction : 1;
@@ -292,18 +299,19 @@ function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFract
     const step = history[i];
     const frac = i === history.length - 1 ? lastRevealFraction : 1;
     const isCurrent = i === history.length - 1;
+    const cardCurrentFraction = isCurrent ? currentFraction : 1;
     if (y + heights[i] > 0 && y < H) {
-      drawCard(ctx, step, frac, PAD_X, y, cardW, isCurrent);
+      drawCard(ctx, step, frac, PAD_X, y, cardW, isCurrent, cardCurrentFraction);
     }
     y += heights[i] + GAP;
   }
 
   if (processingMessage) {
-    drawProcessingIndicator(ctx, processingMessage, PAD_X, y, cardW);
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, y, cardW, animT);
   }
 }
 
-function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Only the current step, expanded — body lines uncapped, card fills available height.
   const PAD_X = 16;
   const cardW = W - PAD_X * 2;
@@ -333,7 +341,9 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
   ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
   ctx.fill();
 
-  ctx.strokeStyle = meta.accent + '55';
+  const currentFraction = Math.min(animT / 200, 1);
+  const hexAlpha = Math.round(currentFraction * 0x55).toString(16).padStart(2, '0');
+  ctx.strokeStyle = meta.accent + hexAlpha;
   ctx.lineWidth = 1;
   ctx.beginPath();
   ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
@@ -388,11 +398,11 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
   }
 
   if (processingMessage) {
-    drawProcessingIndicator(ctx, processingMessage, PAD_X, PAD_X + cardH + 6, cardW);
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, PAD_X + cardH + 6, cardW, animT);
   }
 }
 
-function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction) {
+function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Current step large at bottom; up to 2 prior steps shown above, dimmed and compact.
   const PAD_X = 16;
   const GAP = 8;
@@ -430,10 +440,11 @@ function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFrac
 
   // Current step at bottom
   const currentY = H - PAD_X - indicatorH - currentH;
-  drawCard(ctx, current, lastRevealFraction, PAD_X, currentY, cardW, true);
+  const currentFraction = Math.min(animT / 200, 1);
+  drawCard(ctx, current, lastRevealFraction, PAD_X, currentY, cardW, true, currentFraction);
 
   if (processingMessage) {
-    drawProcessingIndicator(ctx, processingMessage, PAD_X, H - PAD_X - indicatorH + GAP, cardW);
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, H - PAD_X - indicatorH + GAP, cardW, animT);
   }
 }
 
@@ -446,7 +457,7 @@ function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFrac
  * @param {number} lastRevealFraction - text reveal fraction for the last history step
  * @param {'scroll'|'stream'|'focused'} renderMode
  */
-export function renderHistoryToCanvas(canvas, history, processingMessage, lastRevealFraction = 1, renderMode = 'scroll') {
+export function renderHistoryToCanvas(canvas, history, processingMessage, lastRevealFraction = 1, renderMode = 'scroll', animT = 0) {
   const W = canvas.width;
   const H = canvas.height;
   const ctx = canvas.getContext('2d');
@@ -457,11 +468,11 @@ export function renderHistoryToCanvas(canvas, history, processingMessage, lastRe
   if (!history || history.length === 0) return;
 
   if (renderMode === 'stream') {
-    renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+    renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT);
   } else if (renderMode === 'focused') {
-    renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+    renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT);
   } else {
-    renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction);
+    renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT);
   }
 }
 

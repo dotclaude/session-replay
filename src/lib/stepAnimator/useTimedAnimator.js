@@ -31,7 +31,7 @@ export function useTimedAnimator({
   resetState,
   initialDuration = 600,
   initialSpeed = 1,
-  initialMode = 'fixed',
+  initialMode = 'realtime',
   initialCompressionFactor = 25,
 }) {
   const [currentStep, setCurrentStep] = useState(0);

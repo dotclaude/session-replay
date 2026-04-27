@@ -598,6 +598,11 @@
   dependencies:
     "@babel/types" "^7.28.2"
 
+"@types/dom-webcodecs@^0.1.4", "@types/dom-webcodecs@^0.1.6":
+  version "0.1.18"
+  resolved "https://registry.yarnpkg.com/@types/dom-webcodecs/-/dom-webcodecs-0.1.18.tgz#0a4a26ffef72e584976ca8bdaefc3119b533a5c4"
+  integrity sha512-vAvE8C9DGWR+tkb19xyjk1TSUlJ7RUzzp4a9Anu7mwBT+fpyePWK1UxmH14tMO5zHmrnrRIMg5NutnnDztLxgg==
+
 "@types/estree@1.0.8", "@types/estree@^1.0.6":
   version "1.0.8"
   resolved "https://registry.yarnpkg.com/@types/estree/-/estree-1.0.8.tgz#958b91c991b1867ced318bedea0e215ee050726e"
@@ -607,6 +612,11 @@
   version "7.0.15"
   resolved "https://registry.yarnpkg.com/@types/json-schema/-/json-schema-7.0.15.tgz#596a1747233694d50f6ad8a7869fcb6f56cf5841"
   integrity sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==
+
+"@types/wicg-file-system-access@^2020.9.5":
+  version "2020.9.8"
+  resolved "https://registry.yarnpkg.com/@types/wicg-file-system-access/-/wicg-file-system-access-2020.9.8.tgz#a8b739854ccb74b8048ef607d3701e9d506830e7"
+  integrity sha512-ggMz8nOygG7d/stpH40WVaNvBwuyYLnrg5Mbyf6bmsj/8+gb6Ei4ZZ9/4PNpcPNTT8th9Q8sM8wYmWGjMWLX/A==
 
 "@vitejs/plugin-react@^4.3.1":
   version "4.7.0"
@@ -1476,6 +1486,14 @@ minimatch@^3.1.5:
   dependencies:
     brace-expansion "^1.1.7"
 
+mp4-muxer@^5.2.2:
+  version "5.2.2"
+  resolved "https://registry.yarnpkg.com/mp4-muxer/-/mp4-muxer-5.2.2.tgz#40b93b1b727f5f4a9fbda131fe7c5b5013168bf1"
+  integrity sha512-dhozjTywI0h2qFzeShagt8YYw811fh1XlwiDCE2f6Aeqf6xG2CyuShoSa5E0AZDO8pPF0JOZ3wOmWBNWIGdSpQ==
+  dependencies:
+    "@types/dom-webcodecs" "^0.1.6"
+    "@types/wicg-file-system-access" "^2020.9.5"
+
 ms@2.0.0:
   version "2.0.0"
   resolved "https://registry.npmjs.org/ms/-/ms-2.0.0.tgz"
@@ -1963,6 +1981,14 @@ vite@^5.4.10:
     rollup "^4.20.0"
   optionalDependencies:
     fsevents "~2.3.3"
+
+webm-muxer@^5.1.4:
+  version "5.1.4"
+  resolved "https://registry.yarnpkg.com/webm-muxer/-/webm-muxer-5.1.4.tgz#9fa307bad3fb6e836c2a24d8fb729e4982ea88bc"
+  integrity sha512-ditzgFVFbfqPaugkIr4mGhAdob5K9HY6Rzlh7TRsA368yA1sp/m5O7nQCcMLdgFDeNGtFPg8B+MeXLtpzKWX6Q==
+  dependencies:
+    "@types/dom-webcodecs" "^0.1.4"
+    "@types/wicg-file-system-access" "^2020.9.5"
 
 which@^2.0.1:
   version "2.0.2"
