@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { kindColor } from '../editor/kindColors.js';
 import { useTheme } from '../../hooks/useTheme.js';
 
@@ -123,7 +123,7 @@ export default function IntegratedTimeline({
   }, [currentStep, totalSteps, onScrub]);
 
   // Add global mouse move and mouse up listeners when dragging
-  React.useEffect(() => {
+  useEffect(() => {
     if (isDragging) {
       const handleGlobalMouseMove = (e) => {
         scrubToPosition(e.clientX);
