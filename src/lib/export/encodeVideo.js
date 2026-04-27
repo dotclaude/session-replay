@@ -14,6 +14,15 @@ let ffmpegLoaded = false;
 async function getFFmpeg() {
   if (ffmpegInstance) return ffmpegInstance;
 
+  // Check if SharedArrayBuffer is available (requires COOP/COEP headers)
+  if (typeof SharedArrayBuffer === 'undefined') {
+    throw new Error(
+      'Video export requires production mode. Run: npm run build && npm run preview\n\n' +
+      'Reason: WASM ffmpeg needs SharedArrayBuffer, which requires COOP/COEP headers. ' +
+      'These headers break Firefox HMR in dev mode, so they\'re disabled for development.'
+    );
+  }
+
   ffmpegInstance = new FFmpeg();
 
   // Load ffmpeg WASM files from CDN

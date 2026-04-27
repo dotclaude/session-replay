@@ -12,16 +12,22 @@ export default defineConfig({
   },
   server: {
     port: 5174,
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-    // Removed /api proxy - no bridge server needed
+    // COOP/COEP headers disabled in dev mode because they break Firefox HMR
+    // To test video export in dev, use: npm run preview (production build)
+    //
+    // The issue: Firefox's strict COEP enforcement blocks Vite's pre-bundled deps
+    // Chrome is more lenient and works with these headers, but Firefox needs them off
+    //
+    // Trade-off: Dev mode works in all browsers, but video export requires production build
   },
   preview: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
+  },
+  build: {
+    // Ensure production build works with COEP
+    target: 'esnext',
   },
 });
