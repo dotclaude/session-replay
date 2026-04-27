@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
-import { StageCard, CardHeader, CodeBlock, timestamp } from './shared.jsx';
+import React from 'react';
+import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, CollapsibleText, CollapsibleBlock } from './shared.jsx';
 
 export default function AgentProgress({ step, isCurrent, isSearchMatch }) {
   const { agentId, prompt, innerMessage, timestamp: ts } = step.event;
-  const [expanded, setExpanded] = useState(false);
 
   const innerContent = innerMessage?.message?.content;
   const innerText = Array.isArray(innerContent)
@@ -20,42 +19,35 @@ export default function AgentProgress({ step, isCurrent, isSearchMatch }) {
         accent="var(--orange)"
         meta={timestamp(ts)}
       />
-      <div style={{ padding: '8px 14px' }}>
-        {!expanded && innerText && (
-          <div style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-            <span style={{ color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>{innerRole}</span>
-            {innerText.slice(0, 140)}{innerText.length > 140 ? '…' : ''}
-          </div>
-        )}
-      </div>
-      {(prompt || innerText) && (
-        <>
-          {expanded && (
-            <div style={{ borderTop: '1px solid var(--border)' }}>
-              {prompt && (
-                <>
-                  <div style={{ padding: '4px 14px 2px', fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>PROMPT</div>
-                  <CodeBlock>{prompt}</CodeBlock>
-                </>
-              )}
-              {innerText && (
-                <>
-                  <div style={{ padding: '4px 14px 2px', fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, borderTop: prompt ? '1px solid var(--border)' : 'none', textTransform: 'uppercase' }}>
-                    {innerRole}
-                  </div>
-                  <CodeBlock>{innerText}</CodeBlock>
-                </>
-              )}
-            </div>
-          )}
-          <button
-            onClick={() => setExpanded(e => !e)}
-            style={{ display: 'block', width: '100%', padding: '5px', background: 'var(--bg-2)', border: 'none', borderTop: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: 11, cursor: 'pointer' }}
-          >
-            {expanded ? '▲ collapse' : '▼ expand'}
-          </button>
-        </>
+      {innerText && (
+        <div style={{ padding: '8px 14px' }}>
+          <CollapsibleText
+            text={innerText}
+            limit={COLLAPSE.PREVIEW_CHARS}
+            prefix={<span style={{ color: 'var(--text-muted)', fontSize: 11, marginRight: 6 }}>{innerRole}</span>}
+          />
+        </div>
       )}
+      <CollapsibleBlock
+        expandLabel="▼ expand"
+        collapseLabel="▲ collapse"
+        disabled={!prompt && !innerText}
+      >
+        {prompt && (
+          <>
+            <div style={{ padding: '4px 14px 2px', fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>PROMPT</div>
+            <CodeBlock>{prompt}</CodeBlock>
+          </>
+        )}
+        {innerText && (
+          <>
+            <div style={{ padding: '4px 14px 2px', fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, borderTop: prompt ? '1px solid var(--border)' : 'none', textTransform: 'uppercase' }}>
+              {innerRole}
+            </div>
+            <CodeBlock>{innerText}</CodeBlock>
+          </>
+        )}
+      </CollapsibleBlock>
     </StageCard>
   );
 }

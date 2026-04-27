@@ -15,9 +15,10 @@ import ProcessingIndicator from '../components/stages/ProcessingIndicator.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import { getProcessingMessage } from '../lib/utils/processingMessages.js';
 import { loadSessionsCache } from '../lib/sessionsStore.ts';
-import { getSavedSessionsDirectory } from '../lib/fsAccess.ts';
+import { getSavedSessionsDirectory, supportsFileSystemAccess } from '../lib/fsAccess.ts';
 import { loadFullSession } from '../lib/progressiveSessionReader.ts';
 import { ReplayContext } from '../lib/ReplayContext.jsx';
+import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
 
 // Shared replay UI — accepts pre-loaded steps and meta, renders the full replay experience.
 export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo, backLabel }) {
@@ -326,68 +327,91 @@ export function ReplayShell({ steps, meta, projectId, sessionId, session, backTo
 export default function ReplayPage() {
   const { sessionId } = useParams();
   const navigate = useNavigate();
+  const { reinitialise } = useSessionProvider();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [needsPermission, setNeedsPermission] = useState(false);
   const [steps, setSteps] = useState([]);
   const [meta, setMeta] = useState(null);
   const [projectId, setProjectId] = useState(null);
   const [session, setSession] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
+    setNeedsPermission(false);
 
-    loadSessionsCache()
-      .then(async cache => {
-        if (!cache) {
-          throw new Error('No sessions cache found. Please reconnect your .claude folder.');
+    try {
+      const cache = await loadSessionsCache();
+      if (!cache) throw new Error('No sessions cache found. Please reconnect your .claude folder.');
+
+      let found = null;
+      let pid = null;
+      for (const project of cache.projects) {
+        found = project.sessions.find(s => s.id === sessionId);
+        if (found) { pid = project.id; break; }
+      }
+      if (!found) throw new Error('Session not found in cache. Try refreshing on the picker page.');
+
+      // Use cached lines (Firefox eager load) if available
+      let lines = found.lines;
+
+      if (!lines || lines.length === 0) {
+        const handle = await getSavedSessionsDirectory();
+        if (!handle) {
+          setNeedsPermission(true);
+          setLoading(false);
+          return;
         }
+        lines = await loadFullSession(handle, pid, sessionId);
+      }
 
-        let session = null;
-        let pid = null;
-        for (const project of cache.projects) {
-          session = project.sessions.find(s => s.id === sessionId);
-          if (session) {
-            pid = project.id;
-            break;
-          }
-        }
+      if (!lines || lines.length === 0) throw new Error('Session file is empty or unreadable.');
 
-        if (!session) {
-          throw new Error('Session not found in cache. Try refreshing on the picker page.');
-        }
-
-        let lines = session.lines;
-        if (!lines || lines.length === 0) {
-          const handle = await getSavedSessionsDirectory();
-          if (!handle) {
-            throw new Error('Cannot access .claude directory. Please reconnect.');
-          }
-          lines = await loadFullSession(handle, pid, sessionId);
-        }
-
-        if (!lines || lines.length === 0) {
-          throw new Error('Session file is empty or unreadable.');
-        }
-
-        const events = parseSession(lines);
-        const builtSteps = buildSteps(events);
-        setSteps(builtSteps);
-        setMeta({ title: session.title || builtSteps[0]?.event?.title || sessionId.slice(0, 16), sessionId });
-        setProjectId(pid);
-        setSession(session);
-        setLoading(false);
-      })
-      .catch(e => {
-        console.error('Failed to load session:', e);
-        setError(e.message);
-        setLoading(false);
-      });
+      const events = parseSession(lines);
+      const builtSteps = buildSteps(events);
+      setSteps(builtSteps);
+      setMeta({ title: found.title || builtSteps[0]?.event?.title || sessionId.slice(0, 16), sessionId });
+      setProjectId(pid);
+      setSession(found);
+      setLoading(false);
+    } catch (e) {
+      console.error('Failed to load session:', e);
+      setError(e.message);
+      setLoading(false);
+    }
   }, [sessionId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleGrantAccess = useCallback(async () => {
+    await reinitialise();
+    load();
+  }, [reinitialise, load]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
       Loading session…
+    </div>
+  );
+
+  if (needsPermission) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, color: 'var(--text-secondary)' }}>
+      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Permission required to access session files</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, textAlign: 'center' }}>
+        {supportsFileSystemAccess()
+          ? 'Click below to grant access to your .claude folder.'
+          : 'Re-import your .claude folder from the picker to load sessions.'}
+      </div>
+      {supportsFileSystemAccess() && (
+        <button onClick={handleGrantAccess} style={{ padding: '8px 20px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: 'var(--bg-0)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+          Grant access
+        </button>
+      )}
+      <button onClick={() => navigate('/')} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
+        ← Back to sessions
+      </button>
     </div>
   );
 

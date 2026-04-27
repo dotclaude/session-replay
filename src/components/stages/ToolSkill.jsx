@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader, timestamp, COLLAPSE } from './shared.jsx';
 import ToolModal from './ToolModal.jsx';
 
 export default function ToolSkill({ step, isCurrent, isSearchMatch = false }) {
@@ -23,10 +23,10 @@ export default function ToolSkill({ step, isCurrent, isSearchMatch = false }) {
     sections.push({ label: 'Arguments', content: skillArgs, mono: false });
   }
   if (skillDoc) {
-    sections.push({ label: 'Documentation', content: skillDoc, mono: true, maxHeight: '400px' });
+    sections.push({ label: 'Documentation', content: skillDoc, mono: true });
   }
   if (result?.text) {
-    sections.push({ label: 'Result', content: result.text, mono: true, maxHeight: '400px' });
+    sections.push({ label: 'Result', content: result.text, mono: true });
   }
 
   return (
@@ -50,12 +50,12 @@ export default function ToolSkill({ step, isCurrent, isSearchMatch = false }) {
             fontSize: 12,
             color: 'var(--text-secondary)',
             borderTop: '1px solid var(--border)',
-            maxHeight: '60px',
+            maxHeight: COLLAPSE.SKILL_PREVIEW_HEIGHT,
             overflow: 'hidden',
             position: 'relative',
           }}>
             {skillArgs}
-            {skillArgs.length > 150 && (
+            {skillArgs.length > COLLAPSE.SKILL_FADE_CHARS && (
               <div style={{
                 position: 'absolute',
                 bottom: 0,

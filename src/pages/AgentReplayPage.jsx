@@ -1,85 +1,109 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { parseSession } from '../lib/parser/parseSession.js';
 import { buildSteps } from '../lib/parser/buildSteps.js';
 import { loadSessionsCache } from '../lib/sessionsStore.ts';
-import { getSavedSessionsDirectory } from '../lib/fsAccess.ts';
+import { getSavedSessionsDirectory, supportsFileSystemAccess } from '../lib/fsAccess.ts';
 import { loadSubAgentSession } from '../lib/progressiveSessionReader.ts';
+import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
 import { ReplayShell } from './ReplayPage.jsx';
 
 export default function AgentReplayPage() {
   const { sessionId, agentId } = useParams();
   const navigate = useNavigate();
+  const { reinitialise } = useSessionProvider();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [needsPermission, setNeedsPermission] = useState(false);
   const [steps, setSteps] = useState([]);
   const [meta, setMeta] = useState(null);
   const [projectId, setProjectId] = useState(null);
   const [parentSession, setParentSession] = useState(null);
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
+    setNeedsPermission(false);
 
-    loadSessionsCache()
-      .then(async cache => {
-        if (!cache) {
-          throw new Error('No sessions cache found. Please reconnect your .claude folder.');
-        }
+    try {
+      const cache = await loadSessionsCache();
+      if (!cache) throw new Error('No sessions cache found. Please reconnect your .claude folder.');
 
-        // Find the parent session to get projectId and check for cached sub-agent lines
-        let parentSession = null;
-        let pid = null;
-        for (const project of cache.projects) {
-          parentSession = project.sessions.find(s => s.id === sessionId);
-          if (parentSession) {
-            pid = project.id;
-            break;
-          }
-        }
+      let found = null;
+      let pid = null;
+      for (const project of cache.projects) {
+        found = project.sessions.find(s => s.id === sessionId);
+        if (found) { pid = project.id; break; }
+      }
+      if (!found) throw new Error('Parent session not found in cache. Try refreshing on the picker page.');
 
-        if (!parentSession) {
-          throw new Error('Parent session not found in cache. Try refreshing on the picker page.');
-        }
-
-        setParentSession(parentSession);
-
-        // Check Firefox in-memory cache first (populated by WebkitDirectoryFallback)
-        let lines = parentSession.subAgentLines?.[agentId] || null;
-
-        if (!lines || lines.length === 0) {
-          const handle = await getSavedSessionsDirectory();
-          if (!handle) {
-            throw new Error('Agent session not available. In Firefox, re-import your .claude folder from the picker to load sub-agent sessions.');
-          }
-          lines = await loadSubAgentSession(handle, pid, sessionId, agentId);
-        }
-
-        if (!lines || lines.length === 0) {
-          throw new Error('Agent session file is empty or unreadable.');
-        }
-
-        const events = parseSession(lines);
-        const builtSteps = buildSteps(events);
-
-        // Derive a title from the agent step in the parent session if possible
-        const agentTitle = `Agent · ${agentId.slice(0, 10)}…`;
-
+      // Firefox: use cached lines stored during import
+      if (found.subAgentLines?.[agentId]) {
+        const lines = found.subAgentLines[agentId];
+        const builtSteps = buildSteps(parseSession(lines));
         setSteps(builtSteps);
-        setMeta({ title: agentTitle, sessionId: agentId });
+        setMeta({ title: `Agent · ${agentId.slice(0, 10)}…`, sessionId: agentId });
         setProjectId(pid);
+        setParentSession(found);
         setLoading(false);
-      })
-      .catch(e => {
-        console.error('Failed to load agent session:', e);
-        setError(e.message);
+        return;
+      }
+
+      // Chrome: get FS handle — may need a user gesture to grant permission
+      const handle = await getSavedSessionsDirectory();
+      if (!handle) {
+        setNeedsPermission(true);
         setLoading(false);
-      });
+        return;
+      }
+
+      const lines = await loadSubAgentSession(handle, pid, sessionId, agentId);
+      if (!lines || lines.length === 0) throw new Error('Agent session file is empty or unreadable.');
+
+      const builtSteps = buildSteps(parseSession(lines));
+      setSteps(builtSteps);
+      setMeta({ title: `Agent · ${agentId.slice(0, 10)}…`, sessionId: agentId });
+      setProjectId(pid);
+      setParentSession(found);
+      setLoading(false);
+    } catch (e) {
+      console.error('Failed to load agent session:', e);
+      setError(e.message);
+      setLoading(false);
+    }
   }, [sessionId, agentId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleGrantAccess = useCallback(async () => {
+    // requestPermission requires a user gesture — this button click provides it
+    await reinitialise();
+    load();
+  }, [reinitialise, load]);
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
       Loading agent session…
+    </div>
+  );
+
+  if (needsPermission) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: 16, color: 'var(--text-secondary)' }}>
+      <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Permission required to access session files</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 360, textAlign: 'center' }}>
+        {supportsFileSystemAccess()
+          ? 'Click below to grant access to your .claude folder.'
+          : 'Re-import your .claude folder from the picker to load sub-agent sessions.'}
+      </div>
+      {supportsFileSystemAccess() ? (
+        <button onClick={handleGrantAccess} style={{ padding: '8px 20px', background: 'var(--accent)', border: 'none', borderRadius: 4, color: 'var(--bg-0)', fontSize: 13, cursor: 'pointer', fontWeight: 600 }}>
+          Grant access
+        </button>
+      ) : null}
+      <button onClick={() => navigate(`/replay/${sessionId}`)} style={{ padding: '6px 14px', background: 'var(--bg-2)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' }}>
+        ← Parent session
+      </button>
     </div>
   );
 

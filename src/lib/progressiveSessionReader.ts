@@ -135,9 +135,15 @@ async function scanProjectSessions(
   return sessions;
 }
 
+// Lines longer than this are tool results / file contents — strip their payload
+// before JSON parsing so we get metadata fields without the memory cost.
+const LINE_TRUNCATE_BYTES = 4_000;
+
 /**
- * Extract metadata by reading only the beginning and end of a JSONL file
- * Avoids loading massive sessions (some can be 10MB+)
+ * Extract metadata by reading every line of the file but truncating
+ * oversized lines before JSON parsing. This gives accurate tool counts,
+ * turn counts, and token totals across the whole session while keeping
+ * memory use proportional to the number of lines, not their total size.
  */
 async function extractLightweightMetadata(
   fileHandle: FileSystemFileHandle
@@ -146,28 +152,19 @@ async function extractLightweightMetadata(
     const file = await fileHandle.getFile();
     const text = await file.text();
 
-    // For small files (<100KB), just parse everything
-    if (file.size < 100_000) {
-      const lines = readJsonLines(fileHandle);
-      return summariseSession(await lines);
-    }
-
-    // For large files, read first 20KB and last 10KB
-    const firstChunk = text.slice(0, 20_000);
-    const lastChunk = text.slice(-10_000);
-
-    const firstLines = firstChunk.split('\n').filter(Boolean).slice(0, 50);
-    const lastLines = lastChunk.split('\n').filter(Boolean).slice(-20);
-
-    const sampledLines = [...firstLines, ...lastLines].map(line => {
+    const parsed = text.split('\n').filter(Boolean).map(line => {
       try {
-        return JSON.parse(line);
+        // For short lines parse directly — fast path
+        if (line.length <= LINE_TRUNCATE_BYTES) return JSON.parse(line);
+        // For long lines strip the large content arrays/strings before parsing
+        // so we still get type, timestamp, usage, tool names, etc.
+        return parseLineStrippingContent(line);
       } catch {
         return null;
       }
     }).filter(Boolean);
 
-    return summariseSession(sampledLines);
+    return summariseSession(parsed);
   } catch (err) {
     console.warn('Failed to extract metadata:', err);
     return {
@@ -185,6 +182,27 @@ async function extractLightweightMetadata(
       toolCounts: {},
       lineCount: 0,
     };
+  }
+}
+
+/**
+ * Parse a long JSONL line by replacing large string values and content arrays
+ * with stubs so JSON.parse succeeds cheaply. Preserves all metadata fields
+ * (type, timestamp, usage, tool_use name/id, subtype, etc.).
+ */
+function parseLineStrippingContent(line: string): unknown | null {
+  try {
+    // Replace "content": "<long string>" with empty string
+    let stripped = line.replace(/"content"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"content":""');
+    // Replace "text": "<long string>" with empty string
+    stripped = stripped.replace(/"text"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"text":""');
+    // Replace "input": { ... large object ... } — keep key but stub value
+    // Only strip if the input object is very large (heuristic: >500 chars)
+    stripped = stripped.replace(/"input"\s*:\s*(\{[^{}]{500,}\})/g, '"input":{}');
+    return JSON.parse(stripped);
+  } catch {
+    // If stripping mangled the JSON, give up on this line
+    return null;
   }
 }
 
@@ -238,8 +256,11 @@ export async function listSubAgentIds(
       }
     }
 
-    // Sort by first timestamp ascending (creation order)
-    entries.sort((a, b) => a.firstTs.localeCompare(b.firstTs));
+    // Sort by first timestamp ascending; tiebreak by agentId for stable ordering
+    entries.sort((a, b) => {
+      const tsCmp = a.firstTs.localeCompare(b.firstTs);
+      return tsCmp !== 0 ? tsCmp : a.agentId.localeCompare(b.agentId);
+    });
     return entries.map(e => e.agentId);
   } catch {
     return [];

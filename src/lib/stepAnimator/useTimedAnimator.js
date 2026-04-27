@@ -35,7 +35,7 @@ export function useTimedAnimator({
   const [playbackSpeed, setPlaybackSpeed] = useState(initialSpeed);
   const [animationDuration, setAnimationDuration] = useState(initialDuration);
   const [mode, setMode] = useState('fixed'); // 'fixed' | 'realtime' | 'compressed'
-  const [compressionFactor, setCompressionFactor] = useState(10);
+  const [compressionFactor, setCompressionFactor] = useState(25);
 
   const executeStepRef = useRef(executeStep);
   const resetStateRef = useRef(resetState);

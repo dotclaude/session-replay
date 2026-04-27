@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
 import SessionCard from '../components/picker/SessionCard.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
 import ConnectSessionsModal from '../components/picker/ConnectSessionsModal.jsx';
@@ -88,6 +89,7 @@ function ProjectRow({ project, selected, onClick }) {
 
 export default function PickerPage() {
   const navigate = useNavigate();
+  const { reinitialise } = useSessionProvider();
   const [cache, setCache] = useState(null);
   const [projects, setProjects] = useState([]);
   const [selectedProject, setSelectedProject] = useState(null);
@@ -115,6 +117,7 @@ export default function PickerPage() {
       };
 
       await saveSessionsCache(nextCache);
+      await reinitialise(); // update provider with current FS handle
 
       setCache(nextCache);
       setProjects(projects);
@@ -183,11 +186,11 @@ export default function PickerPage() {
   }
 
   async function handleFallbackCache(fallbackCache) {
-    // Convert fallback cache format to our project structure
     await saveSessionsCache(fallbackCache);
     setCache(fallbackCache);
     setProjects(fallbackCache.projects || []);
     setStatus('connected');
+    await reinitialise(); // update provider (handle stays null for Firefox, but keeps state consistent)
   }
 
   async function refresh() {

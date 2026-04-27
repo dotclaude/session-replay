@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { COLLAPSE } from './shared.jsx';
 
 /**
  * Modal overlay for displaying tool details (Agent prompts, Skill docs, etc.)
@@ -125,8 +126,8 @@ export default function ToolModal({ isOpen, onClose, title, sections = [] }) {
                   padding: section.mono ? '12px' : 0,
                   borderRadius: section.mono ? 'var(--radius-sm)' : 0,
                   border: section.mono ? '1px solid var(--border)' : 'none',
-                  maxHeight: section.maxHeight || 'none',
-                  overflowY: section.maxHeight ? 'auto' : 'visible',
+                  maxHeight: section.maxHeight ?? COLLAPSE.MODAL_SECTION_HEIGHT,
+                  overflowY: 'auto',
                 }}
               >
                 {section.content}
