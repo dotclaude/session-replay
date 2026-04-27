@@ -12,22 +12,27 @@ export default function ConnectSessionsModal({
   onError,
   onClose = null
 }) {
-  if (!open) return null;
-
   const supported = supportsFileSystemAccess();
   const [dragging, setDragging] = useState(false);
+
+  if (!open) return null;
 
   async function handleDrop(e) {
     e.preventDefault();
     setDragging(false);
     if (!onDirectory) return;
+
+    // dataTransfer.items is only valid synchronously — grab the handle
+    // promise before the event ends or the items list gets cleared.
     const item = e.dataTransfer.items[0];
     if (!item?.getAsFileSystemHandle) {
       onError?.("Directory drag-and-drop is not supported in this browser.");
       return;
     }
+    const handlePromise = item.getAsFileSystemHandle();
+
     try {
-      const handle = await item.getAsFileSystemHandle();
+      const handle = await handlePromise;
       if (!handle || handle.kind !== 'directory') {
         onError?.("Drop a directory, not a file.");
         return;
