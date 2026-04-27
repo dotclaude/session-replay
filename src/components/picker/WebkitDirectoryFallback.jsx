@@ -63,11 +63,22 @@ export default function WebkitDirectoryFallback({ onCache }) {
 
       // Handle JSONL session files
       if (fileName.endsWith('.jsonl')) {
+        const sessionId = fileName.replace('.jsonl', '');
+
+        // Skip sub-agent files (agent-*.jsonl in subdirectories)
+        // Only process main session files (UUID format at project root)
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId);
+        const isInSubagentsDir = path.includes('/subagents/') || path.includes('\\subagents\\');
+
+        if (!isUuid || isInSubagentsDir) {
+          // Skip: either not a UUID (like agent-*) or in subagents directory
+          continue;
+        }
+
         const text = await file.text();
         const lines = readJsonLines(text);
 
         if (lines.length > 0) {
-          const sessionId = fileName.replace('.jsonl', '');
           project.sessionFiles.push({
             id: sessionId,
             path,
