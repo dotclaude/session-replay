@@ -47,18 +47,35 @@ async function cleanVfs(ffmpeg, files) {
   }
 }
 
-async function execWithProgress(ffmpeg, args, onProgress, progressStart, progressEnd) {
-  const handler = ({ progress }) => {
-    const p = Math.max(0, Math.min(1, progress));
-    onProgress?.(progressStart + p * (progressEnd - progressStart));
+// onProgress receives { ratio: 0..1, encodedSec: number, totalSec: number }
+async function execWithProgress(ffmpeg, args, onProgress, totalSec) {
+  let eventCount = 0;
+  let lastEventAt = Date.now();
+  console.log('[encode] execWithProgress start', { args: args.join(' '), totalSec });
+
+  const handler = ({ progress, time }) => {
+    eventCount++;
+    const now = Date.now();
+    const gap = now - lastEventAt;
+    lastEventAt = now;
+    const encodedSec = (time ?? 0) / 1_000_000;
+    const ratio = totalSec > 0 ? Math.min(encodedSec / totalSec, 0.99) : Math.max(0, Math.min(1, progress));
+    console.log(`[encode] progress #${eventCount} gap=${gap}ms raw_progress=${progress?.toFixed(3)} time=${time} encodedSec=${encodedSec.toFixed(2)} ratio=${ratio.toFixed(3)}`);
+    onProgress?.({ ratio, encodedSec, totalSec });
   };
+
   ffmpeg.on('progress', handler);
+  const t0 = Date.now();
   try {
     await ffmpeg.exec(args);
+    console.log(`[encode] exec completed in ${Date.now() - t0}ms, total progress events: ${eventCount}`);
+  } catch (err) {
+    console.error(`[encode] exec FAILED after ${Date.now() - t0}ms`, err);
+    throw err;
   } finally {
     ffmpeg.off('progress', handler);
   }
-  onProgress?.(progressEnd);
+  onProgress?.({ ratio: 1, encodedSec: totalSec, totalSec });
 }
 
 const CODEC_MIN_SEC = 0.05; // 50ms absolute floor — prevents codec divide-by-zero
@@ -102,14 +119,16 @@ function computeHoldSec(steps, index, timing) {
  */
 function buildFfconcat(frameFiles, steps, timing) {
   const lines = ['ffconcat version 1.0'];
+  let totalSec = 0;
   for (let i = 0; i < frameFiles.length; i++) {
     const raw = computeHoldSec(steps, i, timing);
     const dur = Math.min(Math.max(raw, CODEC_MIN_SEC), MAX_HOLD_SEC);
+    totalSec += dur;
     lines.push(`file ${frameFiles[i]}`);
     lines.push(`duration ${dur.toFixed(6)}`);
   }
   if (frameFiles.length > 0) lines.push(`file ${frameFiles[frameFiles.length - 1]}`);
-  return lines.join('\n');
+  return { text: lines.join('\n'), totalSec };
 }
 
 async function encodeViaWasm({ frames, steps, format, timing, width, onProgress }) {
@@ -127,34 +146,44 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
   await cleanVfs(ffmpeg, [...frameFiles, concatFile, 'palette.png', outputFile]);
 
   try {
-    // Phase 1 (0–30%): write PNG frames
+    // Phase 1: write PNG frames — report as frame-write stage
     for (let i = 0; i < frames.length; i++) {
       const blob = await new Promise(r => frames[i].toBlob(r, 'image/png'));
       const data = await fetchFile(blob);
       await ffmpeg.writeFile(frameFiles[i], data);
-      onProgress?.((i + 1) / frames.length * 0.3);
+      onProgress?.({ stage: 'writing', framesDone: i + 1, framesTotal: frames.length });
     }
 
-    // Write ffconcat manifest
-    const concatText = buildFfconcat(frameFiles, steps ?? [], timing);
+    // Build ffconcat manifest — also gives us total video duration for progress
+    const { text: concatText, totalSec } = buildFfconcat(frameFiles, steps ?? [], timing);
     await ffmpeg.writeFile(concatFile, concatText);
+
+    // Log the first 5 and last 2 lines of the manifest so we can see frame durations
+    const concatLines = concatText.split('\n');
+    const sampleLines = [...concatLines.slice(0, 11), '...', ...concatLines.slice(-3)];
+    console.log(`[encode] ffconcat built: ${frames.length} frames, totalSec=${totalSec.toFixed(3)}s`);
+    console.log('[encode] ffconcat sample:\n' + sampleLines.join('\n'));
+    console.log(`[encode] dimensions: src=${srcW}x${srcH} out=${outW}x${outH} format=${format}`);
 
     const scaleFilter = `scale=${outW}:${outH}:flags=lanczos`;
 
-    // Phase 2 (30–95%): encode
+    // Phase 2: encode
     if (format === 'gif') {
+      // Pass 1: palette — no meaningful time progress, just mark as palette stage
+      onProgress?.({ stage: 'palette', ratio: 0, encodedSec: 0, totalSec });
       await execWithProgress(ffmpeg, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-vf', `${scaleFilter},palettegen`,
         'palette.png',
-      ], onProgress, 0.3, 0.5);
+      ], p => onProgress?.({ stage: 'palette', ...p }), totalSec);
 
+      // Pass 2: encode
       await execWithProgress(ffmpeg, [
         '-f', 'concat', '-safe', '0', '-i', concatFile,
         '-i', 'palette.png',
         '-lavfi', `${scaleFilter}[x];[x][1:v]paletteuse`,
         '-y', outputFile,
-      ], onProgress, 0.5, 0.95);
+      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
 
     } else if (format === 'webm') {
       await execWithProgress(ffmpeg, [
@@ -165,7 +194,7 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
         '-b:v', '0',
         '-crf', '30',
         '-y', outputFile,
-      ], onProgress, 0.3, 0.95);
+      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
 
     } else {
       await execWithProgress(ffmpeg, [
@@ -175,7 +204,7 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
         '-pix_fmt', 'yuv420p',
         '-preset', 'fast',
         '-y', outputFile,
-      ], onProgress, 0.3, 0.95);
+      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
     }
 
     const data = await ffmpeg.readFile(outputFile);

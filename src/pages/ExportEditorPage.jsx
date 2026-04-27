@@ -31,13 +31,28 @@ const RENDER_MODES = [
   { id: 'stream',  label: 'Stream',  desc: 'One step at a time fills the frame' },
 ];
 
+// ─── Clip colors ─────────────────────────────────────────────────────────────
+
+const CLIP_COLORS = ['#58a6ff', '#3fb950', '#ffa657', '#bc8cff', '#f85149', '#d29922'];
+function clipColor(idx) { return CLIP_COLORS[idx % CLIP_COLORS.length]; }
+let _clipIdSeq = 0;
+function newClipId() { return ++_clipIdSeq; }
+
 // ─── Timeline strip ───────────────────────────────────────────────────────────
 
-function Timeline({ steps, clipIn, clipOut, currentStep }) {
+// clips: Array<{id, in, out}> — renders all clip regions in their colors
+function Timeline({ steps, clips, currentStep, height = 44 }) {
   useTheme();
   const svgRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const total = steps.length;
+
+  // Determine which steps are inside any clip
+  const inAnyClip = useMemo(() => {
+    const set = new Set();
+    clips.forEach(c => { for (let i = c.in; i <= c.out; i++) set.add(i); });
+    return set;
+  }, [clips]);
 
   function getIndex(e) {
     const rect = svgRef.current.getBoundingClientRect();
@@ -50,7 +65,7 @@ function Timeline({ steps, clipIn, clipOut, currentStep }) {
     <div style={{ position: 'relative' }}>
       <svg
         ref={svgRef}
-        style={{ display: 'block', width: '100%', height: 40, cursor: 'default' }}
+        style={{ display: 'block', width: '100%', height, cursor: 'default' }}
         viewBox={`0 0 ${total} 1`}
         preserveAspectRatio="none"
         onMouseMove={e => {
@@ -59,22 +74,30 @@ function Timeline({ steps, clipIn, clipOut, currentStep }) {
         }}
         onMouseLeave={() => setTooltip(null)}
       >
+        {/* Base step colors, dimmed if not in any clip */}
         {steps.map((s, i) => (
           <rect key={i} x={i} y={0} width={1} height={1}
             fill={kindColor(s.kind)}
-            opacity={(clipIn != null && clipOut != null) ? (i >= clipIn && i <= clipOut ? 1 : 0.3) : 1}
+            opacity={clips.length > 0 ? (inAnyClip.has(i) ? 1 : 0.2) : 1}
           />
         ))}
+        {/* Turn markers */}
         {steps.map((s, i) => s.kind === 'human'
-          ? <line key={`t${i}`} x1={i} y1={0} x2={i} y2={1} stroke="#e6edf3" strokeWidth={0.1} opacity={0.4} />
+          ? <line key={`t${i}`} x1={i} y1={0} x2={i} y2={1} stroke="#e6edf3" strokeWidth={0.1} opacity={0.3} />
           : null
         )}
-        {clipIn != null && clipOut != null && (
-          <rect x={clipIn} y={0} width={clipOut - clipIn + 1} height={1} fill="#58a6ff" opacity={0.15} />
+        {/* Clip regions */}
+        {clips.map((c, ci) => (
+          <React.Fragment key={c.id}>
+            <rect x={c.in} y={0} width={c.out - c.in + 1} height={1} fill={clipColor(ci)} opacity={0.2} />
+            <line x1={c.in} y1={0} x2={c.in} y2={1} stroke={clipColor(ci)} strokeWidth={0.8} />
+            <line x1={c.out + 1} y1={0} x2={c.out + 1} y2={1} stroke={clipColor(ci)} strokeWidth={0.8} />
+          </React.Fragment>
+        ))}
+        {/* Playhead */}
+        {currentStep != null && (
+          <line x1={currentStep + 0.5} y1={0} x2={currentStep + 0.5} y2={1} stroke="#f0f6fc" strokeWidth={0.5} opacity={0.7} />
         )}
-        {clipIn != null && <line x1={clipIn} y1={0} x2={clipIn} y2={1} stroke="#58a6ff" strokeWidth={0.8} />}
-        {clipOut != null && <line x1={clipOut + 1} y1={0} x2={clipOut + 1} y2={1} stroke="#58a6ff" strokeWidth={0.8} />}
-        <line x1={currentStep + 0.5} y1={0} x2={currentStep + 0.5} y2={1} stroke="#f0f6fc" strokeWidth={0.5} opacity={0.8} />
       </svg>
       {tooltip && (
         <div style={{
@@ -89,6 +112,206 @@ function Timeline({ steps, clipIn, clipOut, currentStep }) {
           {tooltip.i + 1}: {tooltip.desc}
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Dual-handle range slider ─────────────────────────────────────────────────
+
+const THUMB_H = 20;
+const TRACK_H = 4;
+
+function DualRangeSlider({ min, max, valueIn, valueOut, color, onChangeIn, onChangeOut }) {
+  const pct = v => (v - min) / (max - min) * 100;
+  return (
+    <div style={{ position: 'relative', height: THUMB_H, margin: '6px 0' }}>
+      <style>{`
+        .dual-range input[type=range] {
+          position: absolute; width: 100%;
+          height: ${THUMB_H}px; top: 0;
+          background: transparent; -webkit-appearance: none;
+          pointer-events: none; margin: 0;
+        }
+        .dual-range input[type=range]::-webkit-slider-runnable-track {
+          height: ${TRACK_H}px;
+        }
+        .dual-range input[type=range]::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          width: 6px; height: ${THUMB_H}px;
+          margin-top: ${-(THUMB_H - TRACK_H) / 2}px;
+          border-radius: 2px; pointer-events: all; cursor: ew-resize; border: none;
+        }
+        .dual-range input[type=range]::-moz-range-track {
+          height: ${TRACK_H}px;
+        }
+        .dual-range input[type=range]::-moz-range-thumb {
+          width: 6px; height: ${THUMB_H}px;
+          border-radius: 2px; pointer-events: all; cursor: ew-resize; border: none;
+        }
+        .dual-range input[type=range]:nth-child(1)::-webkit-slider-thumb { background: ${color}; }
+        .dual-range input[type=range]:nth-child(2)::-webkit-slider-thumb { background: ${color}; }
+        .dual-range input[type=range]:nth-child(1)::-moz-range-thumb { background: ${color}; }
+        .dual-range input[type=range]:nth-child(2)::-moz-range-thumb { background: ${color}; }
+      `}</style>
+
+      {/* Track background — vertically centered */}
+      <div style={{
+        position: 'absolute',
+        top: '50%', transform: 'translateY(-50%)',
+        left: 0, right: 0, height: TRACK_H,
+        background: 'var(--bg-3)', borderRadius: 2,
+        pointerEvents: 'none',
+      }} />
+      {/* Track fill between handles */}
+      <div style={{
+        position: 'absolute',
+        top: '50%', transform: 'translateY(-50%)',
+        height: TRACK_H, borderRadius: 2,
+        background: color,
+        left: `${pct(valueIn)}%`,
+        right: `${100 - pct(valueOut)}%`,
+        pointerEvents: 'none',
+      }} />
+
+      <div className="dual-range" style={{ position: 'absolute', inset: 0 }}>
+        <input type="range" min={min} max={max} value={valueIn}
+          onChange={e => { const v = +e.target.value; if (v <= valueOut) onChangeIn(v); }}
+        />
+        <input type="range" min={min} max={max} value={valueOut}
+          onChange={e => { const v = +e.target.value; if (v >= valueIn) onChangeOut(v); }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Clip editor modal ────────────────────────────────────────────────────────
+
+function ClipEditorModal({ steps, clips, onClipsChange, onClose }) {
+  const [local, setLocal] = useState(() => clips.map(c => ({ ...c })));
+  const total = steps.length;
+
+  const update = (id, patch) => setLocal(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  const add = () => setLocal(prev => [...prev, { id: newClipId(), in: 0, out: total - 1 }]);
+  const remove = (id) => setLocal(prev => prev.filter(c => c.id !== id));
+  const reset = () => setLocal([{ id: newClipId(), in: 0, out: total - 1 }]);
+
+  // Sort clips by start position for display
+  const sorted = [...local].sort((a, b) => a.in - b.in);
+
+  // Total steps across all clips
+  const totalSelected = local.reduce((sum, c) => sum + (c.out - c.in + 1), 0);
+
+  const apply = () => { onClipsChange(local); onClose(); };
+
+  return (
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 500 }}
+    >
+      <div style={{ width: 640, maxHeight: '85vh', background: 'var(--bg-1)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', boxShadow: '0 24px 64px rgba(0,0,0,0.7)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-2)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)', flex: 1 }}>Edit Clip Ranges</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginRight: 12 }}>{totalSelected} of {total} steps selected</span>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>✕</button>
+        </div>
+
+        {/* Full timeline overview */}
+        <div style={{ padding: '12px 16px 8px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+          <Timeline steps={steps} clips={sorted} height={32} />
+        </div>
+
+        {/* Clip list */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 16px' }}>
+          {sorted.length === 0 && (
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '16px 0', textAlign: 'center' }}>
+              No clips — add one below
+            </div>
+          )}
+          {sorted.map((clip, ci) => {
+            const color = clipColor(ci);
+            const dur = clip.out - clip.in + 1;
+            const t0 = steps[clip.in]?.timestamp;
+            const t1 = steps[clip.out]?.timestamp;
+            const wallMs = t0 && t1 ? new Date(t1) - new Date(t0) : null;
+            return (
+              <div key={clip.id} style={{ marginBottom: 14, padding: '10px 12px', background: 'var(--bg-2)', borderRadius: 6, border: `1px solid ${color}44` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ color: color, fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 }}>[</span>
+                    Clip {ci + 1}
+                    <span style={{ color: color, fontWeight: 700, fontFamily: 'var(--font-mono)', fontSize: 14 }}>]</span>
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                    {clip.in} → {clip.out} &nbsp;·&nbsp; {dur} steps{wallMs ? ` · ${fmt(wallMs)}` : ''}
+                  </span>
+                  {sorted.length > 1 && (
+                    <button onClick={() => remove(clip.id)}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13, padding: '0 2px', lineHeight: 1 }}>
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                <DualRangeSlider
+                  min={0} max={total - 1}
+                  valueIn={clip.in} valueOut={clip.out}
+                  color={color}
+                  onChangeIn={v => update(clip.id, { in: v })}
+                  onChangeOut={v => update(clip.id, { out: v })}
+                />
+
+                {/* Numeric inputs for precision */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>In (step)</div>
+                    <input type="number" min={0} max={clip.out} value={clip.in}
+                      onChange={e => { const v = Math.max(0, Math.min(+e.target.value, clip.out)); update(clip.id, { in: v }); }}
+                      style={{ width: '100%', padding: '3px 6px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Out (step)</div>
+                    <input type="number" min={clip.in} max={total - 1} value={clip.out}
+                      onChange={e => { const v = Math.max(clip.in, Math.min(+e.target.value, total - 1)); update(clip.id, { out: v }); }}
+                      style={{ width: '100%', padding: '3px 6px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-primary)', fontSize: 11, fontFamily: 'var(--font-mono)' }}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3 }}>Steps</div>
+                    <div style={{ padding: '3px 6px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 4, color: 'var(--text-muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                      {dur}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-2)', flexShrink: 0 }}>
+          <button onClick={add}
+            style={{ padding: '7px 14px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
+            + Add clip
+          </button>
+          <button onClick={reset}
+            style={{ padding: '7px 14px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>
+            Full session
+          </button>
+          <div style={{ flex: 1 }} />
+          <button onClick={onClose}
+            style={{ padding: '7px 14px', background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
+            Cancel
+          </button>
+          <button onClick={apply}
+            style={{ padding: '7px 18px', background: 'var(--accent-dim)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-sm)', color: 'white', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>
+            Apply
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -120,7 +343,7 @@ function SliderSetting({ label, value, min, max, step, onChange }) {
 
 // ─── Live animated preview ────────────────────────────────────────────────────
 
-const LivePreview = forwardRef(function LivePreview({ stepsRef, clipIn, clipOut, scale, renderMode }, ref) {
+const LivePreview = forwardRef(function LivePreview({ stepsRef, clips, scale, renderMode }, ref) {
   const [currentEvent, setCurrentEvent] = useState(null);
   const [history, setHistory] = useState([]);
   const previewDomRef = useRef(null);
@@ -140,15 +363,17 @@ const LivePreview = forwardRef(function LivePreview({ stepsRef, clipIn, clipOut,
   }, []);
 
   const clippedStepsRef = useRef([]);
+  const clipsKey = JSON.stringify(clips?.map(c => `${c.in}-${c.out}`));
   useEffect(() => {
     if (!stepsRef.current.length) return;
-    const lo = clipIn ?? 0;
-    const hi = clipOut ?? stepsRef.current.length - 1;
-    clippedStepsRef.current = stepsRef.current.slice(lo, hi + 1);
+    const all = stepsRef.current;
+    clippedStepsRef.current = clips && clips.length > 0
+      ? clips.flatMap(c => all.slice(c.in, c.out + 1))
+      : all;
     resetState();
     if (clippedStepsRef.current.length > 0) executeStep(clippedStepsRef.current[0]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clipIn, clipOut, stepsRef.current.length]);
+  }, [clipsKey, stepsRef.current.length]);
 
   const animator = useTimedAnimator({
     steps: clippedStepsRef,
@@ -358,8 +583,8 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
   const stepsRef = useRef(initialSteps ?? []);
   const livePreviewRef = useRef(null);
 
-  const [clipIn, setClipIn] = useState(() => 0);
-  const [clipOut, setClipOut] = useState(() => Math.max(0, (initialSteps?.length ?? 1) - 1));
+  const [clips, setClips] = useState(() => [{ id: newClipId(), in: 0, out: Math.max(0, (initialSteps?.length ?? 1) - 1) }]);
+  const [showClipEditor, setShowClipEditor] = useState(false);
   const [scale, setScale] = useState(1);
   const [renderMode, setRenderMode] = useState('scroll');
 
@@ -368,38 +593,67 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
   const [vidWidth, setVidWidth] = useState(900);
   const [phase, setPhase] = useState('idle');
   const [captureProgress, setCaptureProgress] = useState(0);
-  const [encodeProgress, setEncodeProgress] = useState(0);
+  const [captureFrame, setCaptureFrame] = useState(0);   // frames captured so far
+  const [captureTotal, setCaptureTotal] = useState(0);   // total frames to capture
+  const [encodeProgress, setEncodeProgress] = useState(0); // 0..1
+  const [encodeStage, setEncodeStage] = useState('');      // 'writing' | 'palette' | 'encoding'
+  const [encodeWritten, setEncodeWritten] = useState(0);   // frames written to VFS
+  const [encodeEncodedSec, setEncodeEncodedSec] = useState(0); // seconds encoded so far
+  const [encodeTotalSec, setEncodeTotalSec] = useState(0);     // total video duration
+  const [encodeElapsed, setEncodeElapsed] = useState(0);
+  const [encodeFrameCount, setEncodeFrameCount] = useState(0);
+  const lastProgressRef = useRef(0); // timestamp of last progress event, for stall detection
   const [downloadUrl, setDownloadUrl] = useState(null);
   const [downloadName, setDownloadName] = useState('');
   const [exportError, setExportError] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const encodeStartRef = useRef(null);
 
   // Keep stepsRef in sync if steps prop changes (shouldn't happen after mount, but be safe)
   useEffect(() => {
     if (initialSteps) {
       stepsRef.current = initialSteps;
-      setClipIn(0);
-      setClipOut(initialSteps.length - 1);
+      setClips([{ id: newClipId(), in: 0, out: initialSteps.length - 1 }]);
     }
   }, [initialSteps]);
 
+  // Tick elapsed time via rAF during encoding — more reliable than setInterval
+  // when the main thread is under load from WASM progress events.
+  useEffect(() => {
+    if (phase !== 'encoding') return;
+    encodeStartRef.current = Date.now();
+    let rafId;
+    const tick = () => {
+      setEncodeElapsed(Math.round((Date.now() - encodeStartRef.current) / 1000));
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [phase]);
+
   const steps = stepsRef.current;
-  const hasClip = clipIn != null && clipOut != null && clipIn <= clipOut;
-  const clipLength = hasClip ? clipOut - clipIn + 1 : 0;
   const totalSteps = steps.length;
+  const hasClip = clips.length > 0 && clips.every(c => c.in <= c.out);
+  const clipLength = clips.reduce((sum, c) => sum + (c.out - c.in + 1), 0);
 
   const estimatedDuration = useMemo(() => {
     if (!hasClip || !steps.length) return 0;
-    const t0 = steps[clipIn]?.event?.timestamp || steps[clipIn]?.timestamp;
-    const t1 = steps[clipOut]?.event?.timestamp || steps[clipOut]?.timestamp;
-    return (t0 && t1) ? new Date(t1) - new Date(t0) : clipLength * 700;
-  }, [steps, clipIn, clipOut, hasClip, clipLength]);
+    // Sum wall-clock duration across all clips
+    return clips.reduce((sum, c) => {
+      const t0 = steps[c.in]?.timestamp;
+      const t1 = steps[c.out]?.timestamp;
+      return sum + ((t0 && t1) ? new Date(t1) - new Date(t0) : (c.out - c.in + 1) * 700);
+    }, 0);
+  }, [steps, clips, hasClip]);
 
   const doExport = useCallback(async () => {
     if (!hasClip) return;
     setPhase('capturing');
     setCaptureProgress(0);
+    setCaptureFrame(0);
+    setCaptureTotal(0);
     setEncodeProgress(0);
+    setEncodeFrameCount(0);
     setExportError(null);
     setDownloadUrl(null);
 
@@ -407,45 +661,80 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
       const preview = livePreviewRef.current;
       if (!preview?.previewEl) throw new Error('Preview not ready — please wait for the session to load.');
 
+      // Seed total before capture starts so the display is meaningful immediately
+      const INDICATOR_HOLD = 2; // matches captureFrames.js INDICATOR_HOLD_FRAMES
+      const visualSteps = preview.steps.filter(s => !['session-header','local-command-output','queue-op'].includes(s.kind));
+      setCaptureTotal(visualSteps.length * (1 + INDICATOR_HOLD));
+
+      let frameIdx = 0;
       const { frames, steps: capturedSteps } = await captureFrames({
         previewEl: preview.previewEl,
         steps: preview.steps,
         animatorRef: preview.animator,
-        onProgress: p => setCaptureProgress(p),
+        onProgress: p => {
+          frameIdx = Math.round(p * visualSteps.length * (1 + INDICATOR_HOLD));
+          setCaptureFrame(frameIdx);
+          setCaptureProgress(p);
+        },
       });
 
       if (!frames.length) throw new Error('No frames captured — clip range may contain only skipped steps.');
 
       const timing = preview.timing;
+      setEncodeFrameCount(frames.length);
       setPhase('encoding');
+      setEncodeElapsed(0);
+      setEncodeStage('writing');
+      setEncodeWritten(0);
+      setEncodeEncodedSec(0);
+      setEncodeTotalSec(0);
+
+      const handleEncodeProgress = (p) => {
+        if (!p) return;
+        lastProgressRef.current = Date.now();
+        setEncodeStage(p.stage ?? '');
+        if (p.stage === 'writing') setEncodeWritten(p.framesDone ?? 0);
+        if (p.stage === 'encoding' || p.stage === 'palette') {
+          setEncodeProgress(p.ratio ?? 0);
+          setEncodeEncodedSec(p.encodedSec ?? 0);
+          setEncodeTotalSec(p.totalSec ?? 0);
+        }
+      };
+      lastProgressRef.current = Date.now();
 
       let blob;
       if (format === 'gif') {
-        blob = await encodeGif({ frames, steps: capturedSteps, timing, quality: gifQuality, onProgress: setEncodeProgress });
+        blob = await encodeGif({ frames, steps: capturedSteps, timing, quality: gifQuality, onProgress: handleEncodeProgress });
       } else if (format === 'mp4') {
-        blob = await encodeMp4({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: setEncodeProgress });
+        blob = await encodeMp4({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: handleEncodeProgress });
       } else {
-        blob = await encodeWebm({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: setEncodeProgress });
+        blob = await encodeWebm({ frames, steps: capturedSteps, timing, width: vidWidth, onProgress: handleEncodeProgress });
       }
 
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
-      setDownloadName(`${filePrefix ?? 'session'}-${clipIn}-${clipOut}.${format}`);
+      setDownloadName(`${filePrefix ?? 'session'}-${clips.length}clip${clips.length !== 1 ? 's' : ''}.${format}`);
       setPhase('done');
       setShowPreview(true);
     } catch (e) {
       setExportError(e.message || String(e));
       setPhase('error');
     }
-  }, [hasClip, format, gifQuality, vidWidth, filePrefix]);
+  }, [hasClip, format, gifQuality, vidWidth, filePrefix, clips]);
 
   const isExporting = phase === 'capturing' || phase === 'encoding';
-  const overallProgress = phase === 'capturing' ? captureProgress * 0.7
-    : phase === 'encoding' ? 0.7 + encodeProgress * 0.3
-    : phase === 'done' ? 1 : 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden', background: 'var(--bg-0)' }}>
+
+      {showClipEditor && (
+        <ClipEditorModal
+          steps={steps}
+          clips={clips}
+          onClipsChange={setClips}
+          onClose={() => setShowClipEditor(false)}
+        />
+      )}
 
       {showPreview && downloadUrl && (
         <VideoPreviewModal
@@ -476,46 +765,40 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
         {/* Left panel — controls */}
         <div style={{ width: 300, flexShrink: 0, borderRight: '1px solid var(--border)', background: 'var(--bg-1)', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-          {/* Timeline */}
-          <div style={{ padding: '14px 14px 8px', flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Clip Range</div>
-            <Timeline steps={steps} clipIn={clipIn} clipOut={clipOut} currentStep={clipIn ?? 0} />
-            <div style={{ display: 'flex', gap: 4, marginTop: 8 }}>
-              <button onClick={() => setClipIn(Math.max(0, (clipIn ?? 0) - 1))}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'rgba(88,166,255,0.15)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
-                ⌊ In ({clipIn ?? 0})
-              </button>
-              <button onClick={() => setClipOut(Math.min(totalSteps - 1, (clipOut ?? totalSteps - 1) + 1))}
-                style={{ flex: 1, padding: '4px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'rgba(88,166,255,0.15)', border: '1px solid var(--accent)', color: 'var(--accent)' }}>
-                Out ({clipOut ?? totalSteps - 1}) ⌉
-              </button>
-            </div>
-            <div style={{ display: 'flex', gap: 4, marginTop: 4 }}>
-              <button onClick={() => { setClipIn(0); setClipOut(steps.length - 1); }}
-                style={{ flex: 1, padding: '3px 0', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                Full session
-              </button>
-              <button onClick={() => { const n = Math.max(0, (clipIn ?? 0) + 1); if (n < (clipOut ?? 0)) setClipIn(n); }}
-                style={{ padding: '3px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
-                title="Trim first step">In+</button>
-              <button onClick={() => { const n = Math.max((clipIn ?? 0), (clipOut ?? totalSteps - 1) - 1); setClipOut(n); }}
-                style={{ padding: '3px 8px', fontSize: 11, cursor: 'pointer', borderRadius: 'var(--radius-sm)', background: 'var(--bg-2)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
-                title="Trim last step">Out-</button>
-            </div>
-          </div>
-
-          {/* Clip stats */}
-          <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 8 }}>Clip Info</div>
-            {hasClip ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                <StatRow label="Steps" value={`${clipIn}–${clipOut} (${clipLength})`} />
-                <StatRow label="Session time" value={fmt(estimatedDuration)} />
-                <StatRow label="Frames (captures)" value={clipLength} />
+          {/* Clip range CTA */}
+          <div style={{ padding: '10px 14px', flexShrink: 0, borderBottom: '1px solid var(--border)' }}>
+            {/* Timeline overview — click to open editor */}
+            <button
+              onClick={() => setShowClipEditor(true)}
+              style={{ display: 'block', width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+              title="Click to edit clip ranges"
+            >
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
+                <span>Clip Ranges</span>
+                <span style={{ fontSize: 10, color: 'var(--accent)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>✎ Edit</span>
               </div>
-            ) : (
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Set clip range above</div>
-            )}
+              <Timeline steps={steps} clips={clips} height={36} />
+            </button>
+
+            {/* Clip summary pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8, justifyContent: 'center' }}>
+              {clips.map((c, ci) => (
+                <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 2, padding: '2px 7px', background: `${clipColor(ci)}22`, border: `1px solid ${clipColor(ci)}66`, borderRadius: 10, fontSize: 11, color: clipColor(ci), fontFamily: 'var(--font-mono)' }}>
+                  <span style={{ fontWeight: 700, fontSize: 12 }}>[</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{c.in}–{c.out}</span>
+                  <span style={{ fontWeight: 700, fontSize: 12 }}>]</span>
+                </div>
+              ))}
+              {clips.length === 0 && (
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>No clips — click Edit to add</span>
+              )}
+            </div>
+
+            {/* Summary row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11 }}>
+              <span style={{ color: 'var(--text-muted)' }}>{clips.length} clip{clips.length !== 1 ? 's' : ''} · {clipLength} steps</span>
+              <span style={{ color: 'var(--text-muted)' }}>{fmt(estimatedDuration)}</span>
+            </div>
           </div>
 
           {/* Export settings */}
@@ -600,8 +883,7 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
             <LivePreview
               ref={livePreviewRef}
               stepsRef={stepsRef}
-              clipIn={clipIn}
-              clipOut={clipOut}
+              clips={clips}
               scale={scale}
               renderMode={renderMode}
             />
@@ -612,17 +894,93 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
 
             {(isExporting || phase === 'done') && (
               <div style={{ marginBottom: 12 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                    {phase === 'capturing' ? `Rendering frames… ${Math.round(captureProgress * 100)}%`
-                      : phase === 'encoding' ? `Encoding ${format.toUpperCase()}… ${Math.round(encodeProgress * 100)}%`
-                      : 'Done'}
+
+                {/* Phase label + detail */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {phase === 'capturing' ? '① Capturing preview frames'
+                      : phase === 'encoding' ? `② Encoding ${format.toUpperCase()}`
+                      : '✓ Export complete'}
                   </span>
-                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{Math.round(overallProgress * 100)}%</span>
+                  {phase === 'capturing' && (
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {Math.round(captureProgress * 100)}%
+                    </span>
+                  )}
+                  {phase === 'encoding' && (
+                    <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'var(--font-mono)' }}>
+                      {encodeElapsed > 0 ? `${encodeElapsed}s elapsed` : '…'}
+                    </span>
+                  )}
                 </div>
-                <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 6 }}>
-                  <div style={{ width: `${Math.round(overallProgress * 100)}%`, height: '100%', background: phase === 'done' ? 'var(--green)' : 'var(--accent)', borderRadius: 2, transition: 'width 0.3s' }} />
+
+                {/* Detail line */}
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+                  {phase === 'capturing' && captureTotal > 0 &&
+                    `Frame ${Math.min(captureFrame, captureTotal)} of ${captureTotal} — screenshotting live preview`}
+                  {phase === 'encoding' && encodeStage === 'writing' &&
+                    `Writing frames to encoder… ${encodeWritten} / ${encodeFrameCount}`}
+                {phase === 'encoding' && encodeStage === 'palette' &&
+                    `Generating GIF colour palette… (${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : 'calculating'})`}
+                {phase === 'encoding' && encodeStage === 'encoding' && (
+                  encodeTotalSec > 0
+                    ? `Encoded ${encodeEncodedSec.toFixed(1)}s / ${encodeTotalSec.toFixed(1)}s · ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px${encodeProgress >= 0.99 ? ' · finalising…' : ''}`
+                    : `Encoding ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px…`
+                )}
+                {phase === 'encoding' && !encodeStage &&
+                    `Preparing ${encodeFrameCount} frames for ffmpeg.wasm…`}
+                {phase === 'done' && downloadUrl &&
+                    `${encodeFrameCount} frames encoded · ready to preview or download`}
                 </div>
+
+                {/* Stall reassurance — shown when ffmpeg goes quiet for >4s */}
+                {phase === 'encoding' && encodeElapsed - Math.round((Date.now() - lastProgressRef.current) / 1000) < -4 && (
+                  <div style={{ fontSize: 10, color: 'var(--yellow)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ animation: 'pulse-dot 1.2s ease-in-out infinite', display: 'inline-block' }}>●</span>
+                    Still encoding — ffmpeg is working, no progress events received recently
+                    <style>{`@keyframes pulse-dot { 0%,100%{opacity:.3} 50%{opacity:1} }`}</style>
+                  </div>
+                )}
+
+                {/* Capture phase: determinate bar */}
+                {phase === 'capturing' && (
+                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 5 }}>
+                    <div style={{ width: `${Math.round(captureProgress * 100)}%`, height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.15s' }} />
+                  </div>
+                )}
+
+                {/* Encoding phase: determinate when ffmpeg reports time, sweep otherwise */}
+                {phase === 'encoding' && (
+                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 5, overflow: 'hidden', position: 'relative' }}>
+                    {encodeStage === 'encoding' && encodeTotalSec > 0 ? (
+                      <div style={{
+                        width: `${Math.round(encodeProgress * 100)}%`,
+                        height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s',
+                      }} />
+                    ) : encodeStage === 'writing' && encodeFrameCount > 0 ? (
+                      <div style={{
+                        width: `${Math.round((encodeWritten / encodeFrameCount) * 100)}%`,
+                        height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.1s',
+                      }} />
+                    ) : (
+                      <>
+                        <div style={{
+                          position: 'absolute', height: '100%', width: '35%',
+                          background: 'var(--accent)', borderRadius: 2,
+                          animation: 'encode-sweep 1.4s ease-in-out infinite',
+                        }} />
+                        <style>{`@keyframes encode-sweep { 0% { left: -35%; } 100% { left: 135%; } }`}</style>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Done: full green bar */}
+                {phase === 'done' && (
+                  <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 6 }}>
+                    <div style={{ width: '100%', height: '100%', background: 'var(--green)', borderRadius: 2 }} />
+                  </div>
+                )}
               </div>
             )}
 
