@@ -49,7 +49,7 @@ export default function WebkitDirectoryFallback({ onCache }) {
       const fileName = file.name.toLowerCase();
 
       if (!projectMap.has(projectId)) {
-        projectMap.set(projectId, { id: projectId, sessionFiles: [], indexFile: null });
+        projectMap.set(projectId, { id: projectId, sessionFiles: [], subAgentFiles: [], indexFile: null });
       }
 
       const project = projectMap.get(projectId);
@@ -63,17 +63,29 @@ export default function WebkitDirectoryFallback({ onCache }) {
 
       // Handle JSONL session files
       if (fileName.endsWith('.jsonl')) {
-        const sessionId = fileName.replace('.jsonl', '');
-
-        // Skip sub-agent files (agent-*.jsonl in subdirectories)
-        // Only process main session files (UUID format at project root)
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId);
         const isInSubagentsDir = path.includes('/subagents/') || path.includes('\\subagents\\');
 
-        if (!isUuid || isInSubagentsDir) {
-          // Skip: either not a UUID (like agent-*) or in subagents directory
+        if (isInSubagentsDir) {
+          // Sub-agent file: extract parentSessionUuid and agentId
+          // Path pattern: .../<parentSessionUuid>/subagents/agent-<agentId>.jsonl
+          const subagentMatch = path.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[\\/]subagents[\\/]agent-([^/\\]+)\.jsonl$/i);
+          if (subagentMatch) {
+            const parentSessionId = subagentMatch[1];
+            const agentId = subagentMatch[2];
+            const text = await file.text();
+            const lines = readJsonLines(text);
+            if (lines.length > 0) {
+              project.subAgentFiles.push({ parentSessionId, agentId, lines });
+            }
+          }
           continue;
         }
+
+        const sessionId = file.name.replace('.jsonl', '');
+
+        // Only process main session files (UUID format at project root)
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId);
+        if (!isUuid) continue;
 
         const text = await file.text();
         const lines = readJsonLines(text);
@@ -92,6 +104,15 @@ export default function WebkitDirectoryFallback({ onCache }) {
     const projects = [];
 
     for (const [projectId, projectData] of projectMap) {
+      // Build a map of parentSessionId -> { agentId -> lines } for sub-agents
+      const subAgentLinesBySession = {};
+      for (const { parentSessionId, agentId, lines } of projectData.subAgentFiles) {
+        if (!subAgentLinesBySession[parentSessionId]) {
+          subAgentLinesBySession[parentSessionId] = {};
+        }
+        subAgentLinesBySession[parentSessionId][agentId] = lines;
+      }
+
       const sessions = projectData.sessionFiles.map(sessionFile => {
         const meta = summariseSession(sessionFile.lines);
 
@@ -115,7 +136,9 @@ export default function WebkitDirectoryFallback({ onCache }) {
           projectId,
           isSubAgent: false,
           ...meta,
-          lines: sessionFile.lines, // Include full content for replay
+          lines: sessionFile.lines,
+          // Store sub-agent lines for Firefox drill-down support (no FS handle available)
+          subAgentLines: subAgentLinesBySession[sessionFile.id] || null,
         };
       });
 

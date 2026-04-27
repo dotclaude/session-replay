@@ -14,7 +14,7 @@ export default function ToolGeneric({ step, isCurrent, isSearchMatch = false }) 
           {result?.text && (
             <>
               <div style={{ padding: '4px 14px 2px', fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, borderTop: '1px solid var(--border)' }}>RESULT</div>
-              <CodeBlock>{result.text.slice(0, 500)}</CodeBlock>
+              <CodeBlock>{result.text.slice(0, 150)}</CodeBlock>
             </>
           )}
         </div>

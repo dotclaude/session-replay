@@ -103,6 +103,17 @@ export function parseSession(lines) {
     }
   }
 
+  // Build tool_use_id → agentId map from agent_progress entries
+  const agentIdByToolUseId = {};
+  for (const obj of lines) {
+    if (obj.type !== 'progress') continue;
+    const data = obj.data || {};
+    if (data.type !== 'agent_progress' || !data.agentId || !obj.parentToolUseID) continue;
+    if (!agentIdByToolUseId[obj.parentToolUseID]) {
+      agentIdByToolUseId[obj.parentToolUseID] = data.agentId;
+    }
+  }
+
   const events = [];
   const seenToolUseIds = new Set();
 
@@ -308,6 +319,7 @@ export function parseSession(lines) {
             toolUseId: block.id,
             result,
             skillDoc,  // Attach skill documentation if this is a Skill tool
+            subAgentId: block.name === 'Agent' ? (agentIdByToolUseId[block.id] || null) : null,
             usage,
             model,
             stopReason,

@@ -37,6 +37,7 @@ export interface SessionMetadata {
   isOrphaned?: boolean;
   subAgentCount?: number;
   lines?: unknown[]; // Full JSONL content for quick access
+  subAgentLines?: Record<string, unknown[]>; // agentId -> lines, for Firefox fallback
 }
 
 export interface ProjectCache {

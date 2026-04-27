@@ -189,6 +189,85 @@ async function extractLightweightMetadata(
 }
 
 /**
+ * Load a sub-agent session JSONL from <projectId>/<parentSessionId>/subagents/agent-<agentId>.jsonl
+ */
+export async function loadSubAgentSession(
+  claudeHandle: FileSystemDirectoryHandle,
+  projectId: string,
+  parentSessionId: string,
+  agentId: string
+): Promise<unknown[]> {
+  const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
+  const projectHandle = await projectsHandle.getDirectoryHandle(projectId, { create: false });
+  const parentHandle = await projectHandle.getDirectoryHandle(parentSessionId, { create: false });
+  const subagentsHandle = await parentHandle.getDirectoryHandle("subagents", { create: false });
+  const fileHandle = await subagentsHandle.getFileHandle(`agent-${agentId}.jsonl`, { create: false });
+  return await readJsonLines(fileHandle as FileSystemFileHandle);
+}
+
+/**
+ * List all sub-agent IDs for a session, sorted by first-line timestamp (creation order).
+ * Returns agent IDs (without the "agent-" prefix), e.g. ["a412f30f...", "a59613f6..."]
+ */
+export async function listSubAgentIds(
+  claudeHandle: FileSystemDirectoryHandle,
+  projectId: string,
+  parentSessionId: string
+): Promise<string[]> {
+  try {
+    const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
+    const projectHandle = await projectsHandle.getDirectoryHandle(projectId, { create: false });
+    const parentHandle = await projectHandle.getDirectoryHandle(parentSessionId, { create: false });
+    const subagentsHandle = await parentHandle.getDirectoryHandle("subagents", { create: false });
+
+    const entries: { agentId: string; firstTs: string }[] = [];
+    for await (const [name, handle] of subagentsHandle.entries()) {
+      if (handle.kind !== 'file') continue;
+      if (!name.endsWith('.jsonl') || name.includes('.meta.')) continue;
+      const agentId = name.replace(/^agent-/, '').replace(/\.jsonl$/, '');
+
+      // Read only first line for timestamp
+      try {
+        const file = await (handle as FileSystemFileHandle).getFile();
+        const chunk = await file.slice(0, 200).text();
+        const firstLine = chunk.split('\n')[0];
+        const parsed = JSON.parse(firstLine);
+        entries.push({ agentId, firstTs: parsed.timestamp || '' });
+      } catch {
+        entries.push({ agentId, firstTs: '' });
+      }
+    }
+
+    // Sort by first timestamp ascending (creation order)
+    entries.sort((a, b) => a.firstTs.localeCompare(b.firstTs));
+    return entries.map(e => e.agentId);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Check if a sub-agent JSONL file exists without reading it
+ */
+export async function checkSubAgentExists(
+  claudeHandle: FileSystemDirectoryHandle,
+  projectId: string,
+  parentSessionId: string,
+  agentId: string
+): Promise<boolean> {
+  try {
+    const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
+    const projectHandle = await projectsHandle.getDirectoryHandle(projectId, { create: false });
+    const parentHandle = await projectHandle.getDirectoryHandle(parentSessionId, { create: false });
+    const subagentsHandle = await parentHandle.getDirectoryHandle("subagents", { create: false });
+    await subagentsHandle.getFileHandle(`agent-${agentId}.jsonl`, { create: false });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Load full session content only when needed (for replay)
  */
 export async function loadFullSession(
