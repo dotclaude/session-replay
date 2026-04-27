@@ -324,7 +324,7 @@ capture.
 
 1. **Enable GitHub Pages** in repo settings → Pages → Source: GitHub Actions
 2. **Push to main** — the included `.github/workflows/deploy.yml` workflow runs automatically
-3. **Access your app** at `https://<username>.github.io/session-replay/`
+3. **Access your app** at `https://dotclaude.github.io/session-replay/`
 
 For a custom domain:
 1. Add `CNAME` file to `public/` with your domain
