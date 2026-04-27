@@ -156,6 +156,8 @@ export default function WebkitDirectoryFallback({ onCache }) {
         }
       }
 
+      sessions.sort((a, b) => (b.firstTs || '').localeCompare(a.firstTs || ''));
+
       projects.push({
         id: projectId,
         label,

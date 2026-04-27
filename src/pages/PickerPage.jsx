@@ -283,7 +283,7 @@ export default function PickerPage() {
         s.gitBranch?.toLowerCase().includes(q)
       );
     }
-    return list;
+    return [...list].sort((a, b) => (b.firstTs || '').localeCompare(a.firstTs || ''));
   }, [sessions, showSubAgents, sessionSearch]);
 
   const subAgentCount = sessions.filter(s => s.isSubAgent).length;
