@@ -1,14 +1,14 @@
 /**
  * encodeVideo
  *
- * Uses @ffmpeg/ffmpeg (WebAssembly) to encode frames client-side.
- * Per-frame durations are computed using the same logic as useTimedAnimator
- * so the video plays back at exactly the speed the preview was set to.
+ * VFR (variable frame rate) encoding via precomputed PTS.
  *
- * timing object mirrors useTimedAnimator state:
- *   { mode, animationDuration, playbackSpeed, compressionFactor }
+ * All frames are fed to ffmpeg at a constant 1fps. A setpts filter then
+ * remaps each frame's presentation timestamp to its precomputed value.
+ * This means ffmpeg encodes exactly N keyframes regardless of how far apart
+ * they are in time — a 30-second hold is one keyframe, not 30s × fps frames.
  *
- * Per-frame duration comes purely from step timestamps and timing mode.
+ * Encode time is O(frame_count) not O(total_video_duration).
  */
 
 import { FFmpeg } from '@ffmpeg/ffmpeg';
@@ -47,48 +47,38 @@ async function cleanVfs(ffmpeg, files) {
   }
 }
 
-// onProgress receives { ratio: 0..1, encodedSec: number, totalSec: number }
-async function execWithProgress(ffmpeg, args, onProgress, totalSec) {
+async function execWithProgress(ffmpeg, args, onProgress, frameCount) {
   let eventCount = 0;
-  let lastEventAt = Date.now();
-  console.log('[encode] execWithProgress start', { args: args.join(' '), totalSec });
+  console.log('[encode] exec start', args.join(' '));
+  const t0 = Date.now();
 
   const handler = ({ progress, time }) => {
     eventCount++;
-    const now = Date.now();
-    const gap = now - lastEventAt;
-    lastEventAt = now;
+    // With 1fps VFR input, progress is reliable — it's based on frames processed
+    const ratio = Math.max(0, Math.min(progress ?? 0, 0.99));
     const encodedSec = (time ?? 0) / 1_000_000;
-    const ratio = totalSec > 0 ? Math.min(encodedSec / totalSec, 0.99) : Math.max(0, Math.min(1, progress));
-    console.log(`[encode] progress #${eventCount} gap=${gap}ms raw_progress=${progress?.toFixed(3)} time=${time} encodedSec=${encodedSec.toFixed(2)} ratio=${ratio.toFixed(3)}`);
-    onProgress?.({ ratio, encodedSec, totalSec });
+    console.log(`[encode] progress #${eventCount} ratio=${ratio.toFixed(3)} time=${encodedSec.toFixed(2)}s`);
+    onProgress?.({ ratio, encodedSec });
   };
 
   ffmpeg.on('progress', handler);
-  const t0 = Date.now();
   try {
     await ffmpeg.exec(args);
-    console.log(`[encode] exec completed in ${Date.now() - t0}ms, total progress events: ${eventCount}`);
+    console.log(`[encode] exec done in ${Date.now() - t0}ms (${eventCount} events)`);
   } catch (err) {
     console.error(`[encode] exec FAILED after ${Date.now() - t0}ms`, err);
     throw err;
   } finally {
     ffmpeg.off('progress', handler);
   }
-  onProgress?.({ ratio: 1, encodedSec: totalSec, totalSec });
+  onProgress?.({ ratio: 1, encodedSec: null });
 }
 
-const CODEC_MIN_SEC = 0.05; // 50ms absolute floor — prevents codec divide-by-zero
-const MAX_HOLD_SEC  = 30;   // cap any single frame at 30s
+const CODEC_MIN_SEC = 0.05;
+const MAX_HOLD_SEC  = 60;
 
 /**
- * Compute hold duration for one step — mirrors useTimedAnimator exactly.
- *
- * mode='fixed':      each step holds for animationDuration/playbackSpeed ms
- * mode='realtime':   each step holds for its real timestamp delta / playbackSpeed
- * mode='compressed': each step holds for its real timestamp delta / compressionFactor
- *
- * Returns seconds.
+ * Mirror of useTimedAnimator.computeStepDuration — returns hold in seconds.
  */
 function computeHoldSec(steps, index, timing) {
   const { mode, animationDuration, playbackSpeed, compressionFactor } = timing;
@@ -98,37 +88,74 @@ function computeHoldSec(steps, index, timing) {
 
   const cur  = steps[index]?.timestamp;
   const next = steps[index + 1]?.timestamp;
-
   if (!cur || !next) return fixedSec;
 
   const deltaMs = new Date(next) - new Date(cur);
   if (deltaMs <= 0) return fixedSec;
 
-  if (mode === 'realtime')   return deltaMs / Math.max(playbackSpeed,        0.01) / 1000;
-  if (mode === 'compressed') return deltaMs / Math.max(compressionFactor,    0.01) / 1000;
+  if (mode === 'realtime')   return deltaMs / Math.max(playbackSpeed,     0.01) / 1000;
+  if (mode === 'compressed') return deltaMs / Math.max(compressionFactor, 0.01) / 1000;
   return fixedSec;
 }
 
 /**
- * Build ffconcat manifest with per-frame hold durations.
- *
- * For realtime/compressed modes the duration comes purely from timestamps —
- *
- * A small CODEC_MIN_SEC floor (50ms) is applied to all modes to keep
- * the video container valid.
+ * Precompute cumulative PTS values for each frame.
+ * Returns Float64Array of seconds — pts[i] is when frame i should be displayed.
+ * This is pure JS and runs in <1ms regardless of video length.
  */
-function buildFfconcat(frameFiles, steps, timing) {
-  const lines = ['ffconcat version 1.0'];
-  let totalSec = 0;
-  for (let i = 0; i < frameFiles.length; i++) {
-    const raw = computeHoldSec(steps, i, timing);
-    const dur = Math.min(Math.max(raw, CODEC_MIN_SEC), MAX_HOLD_SEC);
-    totalSec += dur;
-    lines.push(`file ${frameFiles[i]}`);
-    lines.push(`duration ${dur.toFixed(6)}`);
+function computePTS(steps, timing) {
+  const pts = new Float64Array(steps.length);
+  let t = 0;
+  for (let i = 0; i < steps.length; i++) {
+    pts[i] = t;
+    const hold = Math.min(Math.max(computeHoldSec(steps, i, timing), CODEC_MIN_SEC), MAX_HOLD_SEC);
+    t += hold;
   }
-  if (frameFiles.length > 0) lines.push(`file ${frameFiles[frameFiles.length - 1]}`);
-  return { text: lines.join('\n'), totalSec };
+  const totalSec = t;
+  console.log(`[encode] PTS precomputed: ${steps.length} frames, totalSec=${totalSec.toFixed(3)}s`);
+  console.log(`[encode] PTS sample: [${Array.from(pts.slice(0, 6)).map(v => v.toFixed(3)).join(', ')} ...]`);
+  return { pts, totalSec };
+}
+
+/**
+ * Build a setpts filter expression that maps each frame index N to its
+ * precomputed PTS value (in timebase units of 1/1000 seconds).
+ *
+ * We write frames at 1fps (-framerate 1), so ffmpeg assigns PTS 0,1,2,...
+ * The setpts expression overrides these with our precomputed values.
+ *
+ * Strategy: write PTS values into a concat manifest where each file entry
+ * specifies an explicit outpoint — this is the most reliable VFR technique
+ * in ffmpeg and doesn't require complex filter expressions.
+ *
+ * Actually the cleanest approach: use the concat demuxer with explicit
+ * `duration` per entry — but we already know that causes encoding of
+ * intermediate frames. Instead we use the `-vf settb,setpts` approach:
+ *
+ * Feed frames at 1fps. Each frame N has input PTS = N (seconds at 1fps).
+ * Use setpts to remap: frame N → pts[N] seconds.
+ * Build the expression as a series of if(eq(N,i), pts[i], ...) calls.
+ * For large frame counts, use the `expr` with a lookup via mod arithmetic
+ * or write the PTS list to a file and use the `movie` filter — complex.
+ *
+ * Simplest reliable approach for ffmpeg.wasm: write each frame as its own
+ * 1-frame clip in a concat manifest with `duration` set, but pass
+ * `-c copy` on a pre-encoded intermediate. That's two passes.
+ *
+ * Best approach for wasm: use `-framerate 1` input + `setpts` with the
+ * expression `if(eq(N,0),T0, if(eq(N,1),T1,...,TN)...)` in seconds,
+ * multiplied by TB (timebase). For 148 frames this is a ~6KB expression string.
+ */
+function buildSetptsExpr(pts) {
+  // Build nested if expression: if(eq(N,0),T0,if(eq(N,1),T1,...,TN)...)
+  // N is the frame number (0-based), TB is the timebase
+  // We set timebase to 1/1000 so PTS values are in milliseconds
+  const TB = 1000;
+  let expr = `${Math.round(pts[pts.length - 1] * TB)}`;
+  for (let i = pts.length - 2; i >= 0; i--) {
+    expr = `if(eq(N\\,${i})\\,${Math.round(pts[i] * TB)}\\,${expr})`;
+  }
+  return expr;
 }
 
 async function encodeViaWasm({ frames, steps, format, timing, width, onProgress }) {
@@ -141,12 +168,11 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
 
   const frameFiles = frames.map((_, i) => `f${String(i).padStart(5, '0')}.png`);
   const outputFile = `output.${format}`;
-  const concatFile = 'input.ffconcat';
 
-  await cleanVfs(ffmpeg, [...frameFiles, concatFile, 'palette.png', outputFile]);
+  await cleanVfs(ffmpeg, [...frameFiles, 'palette.png', outputFile]);
 
   try {
-    // Phase 1: write PNG frames — report as frame-write stage
+    // Phase 1: write PNG frames
     for (let i = 0; i < frames.length; i++) {
       const blob = await new Promise(r => frames[i].toBlob(r, 'image/png'));
       const data = await fetchFile(blob);
@@ -154,61 +180,62 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
       onProgress?.({ stage: 'writing', framesDone: i + 1, framesTotal: frames.length });
     }
 
-    // Build ffconcat manifest — also gives us total video duration for progress
-    const { text: concatText, totalSec } = buildFfconcat(frameFiles, steps ?? [], timing);
-    await ffmpeg.writeFile(concatFile, concatText);
+    // Phase 2: precompute PTS in JS — O(N), completes in <1ms
+    const { pts, totalSec } = computePTS(steps, timing);
+    const ptsExpr = buildSetptsExpr(pts);
 
-    // Log the first 5 and last 2 lines of the manifest so we can see frame durations
-    const concatLines = concatText.split('\n');
-    const sampleLines = [...concatLines.slice(0, 11), '...', ...concatLines.slice(-3)];
-    console.log(`[encode] ffconcat built: ${frames.length} frames, totalSec=${totalSec.toFixed(3)}s`);
-    console.log('[encode] ffconcat sample:\n' + sampleLines.join('\n'));
-    console.log(`[encode] dimensions: src=${srcW}x${srcH} out=${outW}x${outH} format=${format}`);
-
+    // setpts remaps frame N from 1fps input PTS to precomputed PTS.
+    // settb=1/1000 sets timebase to milliseconds so our integer PTS values work.
+    const ptsFilter = `settb=1/1000,setpts='${ptsExpr}'`;
     const scaleFilter = `scale=${outW}:${outH}:flags=lanczos`;
 
-    // Phase 2: encode
+    console.log(`[encode] PTS expr length: ${ptsExpr.length} chars, timebase=1/1000`);
+    console.log(`[encode] dimensions: src=${srcW}x${srcH} out=${outW}x${outH} format=${format}`);
+
+    // Phase 3: encode — ffmpeg reads N frames at 1fps, setpts remaps timestamps.
+    // Encode time is O(frame_count) not O(total_video_duration).
     if (format === 'gif') {
-      // Pass 1: palette — no meaningful time progress, just mark as palette stage
+      // Pass 1: palette gen
       onProgress?.({ stage: 'palette', ratio: 0, encodedSec: 0, totalSec });
       await execWithProgress(ffmpeg, [
-        '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-vf', `${scaleFilter},palettegen`,
+        '-framerate', '1', '-i', 'f%05d.png',
+        '-vf', `${ptsFilter},${scaleFilter},palettegen`,
         'palette.png',
-      ], p => onProgress?.({ stage: 'palette', ...p }), totalSec);
+      ], p => onProgress?.({ stage: 'palette', totalSec, ...p }), frames.length);
 
       // Pass 2: encode
       await execWithProgress(ffmpeg, [
-        '-f', 'concat', '-safe', '0', '-i', concatFile,
+        '-framerate', '1', '-i', 'f%05d.png',
         '-i', 'palette.png',
-        '-lavfi', `${scaleFilter}[x];[x][1:v]paletteuse`,
+        '-lavfi', `[0:v]${ptsFilter},${scaleFilter}[x];[x][1:v]paletteuse`,
         '-y', outputFile,
-      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
+      ], p => onProgress?.({ stage: 'encoding', totalSec, ...p }), frames.length);
 
     } else if (format === 'webm') {
       await execWithProgress(ffmpeg, [
-        '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-vf', scaleFilter,
+        '-framerate', '1', '-i', 'f%05d.png',
+        '-vf', `${ptsFilter},${scaleFilter}`,
         '-c:v', 'libvpx-vp9',
         '-pix_fmt', 'yuv420p',
         '-b:v', '0',
         '-crf', '30',
         '-y', outputFile,
-      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
+      ], p => onProgress?.({ stage: 'encoding', totalSec, ...p }), frames.length);
 
     } else {
+      // MP4
       await execWithProgress(ffmpeg, [
-        '-f', 'concat', '-safe', '0', '-i', concatFile,
-        '-vf', scaleFilter,
+        '-framerate', '1', '-i', 'f%05d.png',
+        '-vf', `${ptsFilter},${scaleFilter}`,
         '-c:v', 'libx264',
         '-pix_fmt', 'yuv420p',
         '-preset', 'fast',
         '-y', outputFile,
-      ], p => onProgress?.({ stage: 'encoding', ...p }), totalSec);
+      ], p => onProgress?.({ stage: 'encoding', totalSec, ...p }), frames.length);
     }
 
     const data = await ffmpeg.readFile(outputFile);
-    onProgress?.(1);
+    onProgress?.({ stage: 'done', ratio: 1 });
 
     return new Blob([data.buffer], {
       type: format === 'gif' ? 'image/gif' : format === 'webm' ? 'video/webm' : 'video/mp4',
@@ -220,7 +247,7 @@ async function encodeViaWasm({ frames, steps, format, timing, width, onProgress 
     }
     throw err;
   } finally {
-    try { await cleanVfs(ffmpeg, [...frameFiles, concatFile, 'palette.png', outputFile]); } catch {}
+    try { await cleanVfs(ffmpeg, [...frameFiles, 'palette.png', outputFile]); } catch {}
   }
 }
 

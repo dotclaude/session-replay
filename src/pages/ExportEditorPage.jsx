@@ -919,18 +919,16 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
                   {phase === 'capturing' && captureTotal > 0 &&
                     `Frame ${Math.min(captureFrame, captureTotal)} of ${captureTotal} — screenshotting live preview`}
                   {phase === 'encoding' && encodeStage === 'writing' &&
-                    `Writing frames to encoder… ${encodeWritten} / ${encodeFrameCount}`}
-                {phase === 'encoding' && encodeStage === 'palette' &&
-                    `Generating GIF colour palette… (${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : 'calculating'})`}
-                {phase === 'encoding' && encodeStage === 'encoding' && (
-                  encodeTotalSec > 0
-                    ? `Encoded ${encodeEncodedSec.toFixed(1)}s / ${encodeTotalSec.toFixed(1)}s · ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px${encodeProgress >= 0.99 ? ' · finalising…' : ''}`
-                    : `Encoding ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px…`
-                )}
-                {phase === 'encoding' && !encodeStage &&
-                    `Preparing ${encodeFrameCount} frames for ffmpeg.wasm…`}
-                {phase === 'done' && downloadUrl &&
-                    `${encodeFrameCount} frames encoded · ready to preview or download`}
+                    `Writing ${encodeWritten} / ${encodeFrameCount} frames to VFS…`}
+                  {phase === 'encoding' && encodeStage === 'palette' &&
+                    `Generating GIF colour palette from ${encodeFrameCount} frames… (${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : ''})`}
+                  {phase === 'encoding' && encodeStage === 'encoding' && (
+                    `Encoding ${encodeFrameCount} frames → ${format.toUpperCase()} ${vidWidth}px · ${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video` : ''}${encodeProgress >= 0.99 ? ' · finalising…' : ''}`
+                  )}
+                  {phase === 'encoding' && !encodeStage &&
+                    `Preparing ${encodeFrameCount} frames…`}
+                  {phase === 'done' && downloadUrl &&
+                    `${encodeFrameCount} frames encoded · ${encodeTotalSec > 0 ? `${encodeTotalSec.toFixed(1)}s video · ` : ''}ready to preview or download`}
                 </div>
 
                 {/* Stall reassurance — shown when ffmpeg goes quiet for >4s */}
@@ -949,10 +947,10 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
                   </div>
                 )}
 
-                {/* Encoding phase: determinate when ffmpeg reports time, sweep otherwise */}
+                {/* Encoding phase — all stages now determinate (VFR approach = O(frames)) */}
                 {phase === 'encoding' && (
                   <div style={{ background: 'var(--bg-3)', borderRadius: 2, height: 5, overflow: 'hidden', position: 'relative' }}>
-                    {encodeStage === 'encoding' && encodeTotalSec > 0 ? (
+                    {(encodeStage === 'encoding' || encodeStage === 'palette') && encodeProgress > 0 ? (
                       <div style={{
                         width: `${Math.round(encodeProgress * 100)}%`,
                         height: '100%', background: 'var(--accent)', borderRadius: 2, transition: 'width 0.3s',
