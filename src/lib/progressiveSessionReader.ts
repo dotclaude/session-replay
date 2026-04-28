@@ -22,6 +22,7 @@ export async function scanProjectsMetadata(
   claudeHandle: FileSystemDirectoryHandle,
   onProgress?: (progress: ScanProgress) => void
 ): Promise<ProjectCache[]> {
+  const t0 = performance.now();
   const projects: ProjectCache[] = [];
   let projectsScanned = 0;
   let sessionsFound = 0;
@@ -36,17 +37,22 @@ export async function scanProjectsMetadata(
     }
   }
 
-  // Scan projects concurrently in batches
+  const enumMs = performance.now() - t0;
+  console.log(`[scan] enumerated ${projectEntries.length} projects in ${enumMs.toFixed(0)}ms`);
+  onProgress?.({ projectsScanned, sessionsFound, currentProject: `Found ${projectEntries.length} projects, scanning…` });
+
+  // Scan projects concurrently in batches — report progress per project as each completes
   for (let i = 0; i < projectEntries.length; i += CONCURRENCY) {
     const batch = projectEntries.slice(i, i + CONCURRENCY);
-    const batchNames = batch.map(([name]) => name).join(', ');
-    onProgress?.({ projectsScanned, sessionsFound, currentProject: batchNames });
 
-    const results = await Promise.all(
+    await Promise.all(
       batch.map(async ([projectDirName, projectHandle]) => {
+        const pt0 = performance.now();
+        onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
         try {
-          const sessions = await scanProjectSessions(projectHandle);
-          if (sessions.length === 0) return null;
+          const sessions = await scanProjectSessions(projectHandle, (path) => {
+            onProgress?.({ projectsScanned, sessionsFound, currentProject: path });
+          });
 
           let cwd: string | null = null;
           try {
@@ -67,27 +73,24 @@ export async function scanProjectsMetadata(
           const sessionCount = sessions.filter(s => !s.isSubAgent).length;
           const subAgentCount = sessions.filter(s => s.isSubAgent).length;
 
-          if (sessionCount === 0 && subAgentCount === 0) return null;
+          console.log(`[scan] ${label} — ${sessionCount} sessions in ${(performance.now() - pt0).toFixed(0)}ms`);
 
-          return { id: projectDirName, label, cwd, sessionCount, subAgentCount, firstTs, sessions: sessions as any };
+          if (sessionCount === 0 && subAgentCount === 0) return;
+
+          projects.push({ id: projectDirName, label, cwd, sessionCount, subAgentCount, firstTs, sessions: sessions as any });
+          projectsScanned++;
+          sessionsFound += sessionCount;
+          onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
         } catch (err) {
-          console.warn(`Skipping project ${projectDirName}:`, err);
-          return null;
+          console.warn(`[scan] skipping ${projectDirName}:`, err);
         }
       })
     );
-
-    for (const result of results) {
-      if (!result) continue;
-      projectsScanned++;
-      sessionsFound += result.sessionCount;
-      projects.push(result);
-    }
-
-    onProgress?.({ projectsScanned, sessionsFound, currentProject: null });
   }
 
   projects.sort((a, b) => (b.firstTs || "").localeCompare(a.firstTs || ""));
+
+  console.log(`[scan] done — ${projectsScanned} projects, ${sessionsFound} sessions in ${((performance.now() - t0) / 1000).toFixed(2)}s`);
 
   return projects;
 }
@@ -98,7 +101,8 @@ export async function scanProjectsMetadata(
 const CONCURRENCY = 8;
 
 async function scanProjectSessions(
-  projDirHandle: FileSystemDirectoryHandle
+  projDirHandle: FileSystemDirectoryHandle,
+  onFile?: (path: string) => void
 ): Promise<LightweightSessionMetadata[]> {
   const sessions: LightweightSessionMetadata[] = [];
   const entries: [string, FileSystemHandle][] = [];
@@ -122,13 +126,13 @@ async function scanProjectSessions(
     const batch = sessionFiles.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
       batch.map(async ({ id, handle }) => {
+        onFile?.(`${projDirHandle.name}/${id}.jsonl`);
         const meta = await extractLightweightMetadata(handle);
         return { id, projectId: projDirHandle.name, isSubAgent: false, ...meta };
       })
     );
     sessions.push(...results);
   }
-
 
   sessions.sort((a, b) => (b.firstTs || "").localeCompare(a.firstTs || ""));
 
