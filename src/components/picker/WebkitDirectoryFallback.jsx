@@ -10,17 +10,37 @@ function safeJsonParse(text) {
   }
 }
 
+const LINE_TRUNCATE_BYTES = 4_000;
+
+function stripLargeLine(line) {
+  try {
+    let s = line.replace(/"content"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"content":""');
+    s = s.replace(/"text"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"text":""');
+    s = s.replace(/"input"\s*:\s*(\{[^{}]{500,}\})/g, '"input":{}');
+    return JSON.parse(s);
+  } catch {
+    return null;
+  }
+}
+
 function readJsonLines(text) {
-  const lines = text.split('\n').filter(Boolean);
+  const rawLines = text.split('\n').filter(Boolean);
   const parsed = [];
-  for (const line of lines) {
+  for (const line of rawLines) {
     try {
-      parsed.push(JSON.parse(line));
+      const obj = line.length <= LINE_TRUNCATE_BYTES
+        ? JSON.parse(line)
+        : stripLargeLine(line);
+      if (obj) parsed.push(obj);
     } catch {
-      // Skip invalid lines
+      // skip
     }
   }
   return parsed;
+}
+
+function yieldToMain() {
+  return new Promise(resolve => setTimeout(resolve, 0));
 }
 
 export default function WebkitDirectoryFallback({ onCache }) {
@@ -80,42 +100,39 @@ export default function WebkitDirectoryFallback({ onCache }) {
       return projectMap.get(projectId);
     };
 
-    // Read all files concurrently in batches
+    // Read and parse files in batches — parsing happens inside each batch
+    // so the main thread yields between batches instead of one giant sync block
     let doneCount = 0;
-    const results = [];
     for (let i = 0; i < toRead.length; i += CONCURRENCY) {
       const batch = toRead.slice(i, i + CONCURRENCY);
       const batchResults = await Promise.all(batch.map(async (entry) => {
         const text = await entry.file.text();
         return { ...entry, text };
       }));
-      doneCount += batchResults.length;
-      setReadProgress({ done: doneCount, total: toRead.length });
-      results.push(...batchResults);
-    }
 
-    for (const { text, projectId, kind, path, sessionId, parentSessionId, agentId } of results) {
-      const project = ensureProject(projectId);
-
-      if (kind === 'index') {
-        project.indexFile = safeJsonParse(text);
-      } else if (kind === 'subagent') {
-        const lines = readJsonLines(text);
-        if (lines.length > 0) {
-          project.subAgentFiles.push({ parentSessionId, agentId, lines });
-        }
-      } else if (kind === 'session') {
-        const lines = readJsonLines(text);
-        if (lines.length > 0) {
-          project.sessionFiles.push({ id: sessionId, path, lines });
+      for (const { text, projectId, kind, path, sessionId, parentSessionId, agentId } of batchResults) {
+        const project = ensureProject(projectId);
+        if (kind === 'index') {
+          project.indexFile = safeJsonParse(text);
+        } else if (kind === 'subagent') {
+          const lines = readJsonLines(text);
+          if (lines.length > 0) project.subAgentFiles.push({ parentSessionId, agentId, lines });
+        } else if (kind === 'session') {
+          const lines = readJsonLines(text);
+          if (lines.length > 0) project.sessionFiles.push({ id: sessionId, path, lines });
         }
       }
+
+      doneCount += batchResults.length;
+      setReadProgress({ done: doneCount, total: toRead.length });
+      await yieldToMain();
     }
 
-    // Build project structure
+    // Build project structure — yield between projects so the UI stays responsive
     const projects = [];
 
     for (const [projectId, projectData] of projectMap) {
+      await yieldToMain();
       // Build a map of parentSessionId -> { agentId -> lines } for sub-agents
       const subAgentLinesBySession = {};
       for (const { parentSessionId, agentId, lines } of projectData.subAgentFiles) {
