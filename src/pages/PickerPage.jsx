@@ -623,24 +623,38 @@ export default function PickerPage() {
                   ))}
                 </div>
                 {projectView === 'tree' && (
-                  <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }}>
-                    <button onClick={collapseAll}
+                  <div style={{ display: 'flex', gap: 1 }}>
+                    <button onClick={collapseAll} title="Collapse All"
                       style={{
-                        padding: '2px 6px', fontSize: 10, cursor: 'pointer',
-                        background: !foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'var(--bg-3)',
-                        border: 'none', borderRight: '1px solid var(--border)',
-                        color: !foldersExpanded && folderOverrides.size === 0 ? 'white' : 'var(--text-muted)',
-                      }}>
-                      ⊟
-                    </button>
-                    <button onClick={expandAll}
-                      style={{
-                        padding: '2px 6px', fontSize: 10, cursor: 'pointer',
-                        background: foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'var(--bg-3)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, padding: 0, cursor: 'pointer', borderRadius: 3,
+                        background: !foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'transparent',
                         border: 'none',
-                        color: foldersExpanded && folderOverrides.size === 0 ? 'white' : 'var(--text-muted)',
+                        color: !foldersExpanded && folderOverrides.size === 0 ? 'var(--accent)' : 'var(--text-muted)',
                       }}>
-                      ⊞
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M9 9H4v1h5V9z"/>
+                        <path d="M9 7H4v1h5V7z"/>
+                        <path d="M4 5h5V4H4v1z"/>
+                        <path d="M14 3H2v10h12V3zm-1 9H3V4h10v8z"/>
+                        <path d="M11 6.5l-1-1-1 1 .7.7-.7.7 1 1 1-1-.7-.7.7-.7z"/>
+                      </svg>
+                    </button>
+                    <button onClick={expandAll} title="Expand All"
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, padding: 0, cursor: 'pointer', borderRadius: 3,
+                        background: foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'transparent',
+                        border: 'none',
+                        color: foldersExpanded && folderOverrides.size === 0 ? 'var(--accent)' : 'var(--text-muted)',
+                      }}>
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                        <path d="M9 9H4v1h5V9z"/>
+                        <path d="M9 7H4v1h5V7z"/>
+                        <path d="M4 5h5V4H4v1z"/>
+                        <path d="M14 3H2v10h12V3zm-1 9H3V4h10v8z"/>
+                        <path d="M11 9.5l-1 1-1-1 .7-.7-.7-.7 1-1 1 1-.7.7.7.7z"/>
+                      </svg>
                     </button>
                   </div>
                 )}
