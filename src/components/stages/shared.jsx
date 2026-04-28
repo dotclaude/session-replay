@@ -1,21 +1,5 @@
 import { useState } from 'react';
-
-// ─── Collapse / expand thresholds ────────────────────────────────────────────
-// Change these to adjust how much is shown before an expand option appears.
-export const COLLAPSE = {
-  // Inline text preview character limit (AgentProgress, ToolAgent prompt snippet)
-  PREVIEW_CHARS: 32,
-  // Bash output line count shown before "show N more lines"
-  BASH_LINES: 5,
-  // Generic tool result character preview (ToolGeneric)
-  GENERIC_CHARS: 32,
-  // CSS max-height for skill args fade preview (ToolSkill)
-  SKILL_PREVIEW_HEIGHT: '60px',
-  // Character count above which the gradient fade is shown (ToolSkill)
-  SKILL_FADE_CHARS: 32,
-  // Max-height of scrollable sections inside ToolModal
-  MODAL_SECTION_HEIGHT: '400px',
-};
+import { COLLAPSE } from './stageUtils.js';
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
 
@@ -68,11 +52,6 @@ export function CodeBlock({ children, lang: _lang }) {
       {children}
     </pre>
   );
-}
-
-export function timestamp(ts) {
-  if (!ts) return '';
-  return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 // ─── Collapse / expand components ────────────────────────────────────────────

@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, ExpandButton } from './shared.jsx';
+import { StageCard, CardHeader, CodeBlock, ExpandButton } from './shared.jsx';
+import { timestamp, COLLAPSE } from './stageUtils.js';
 
 export default function ToolBash({ step, isCurrent, isSearchMatch = false }) {
   const { toolInput, result, timestamp: ts } = step.event;

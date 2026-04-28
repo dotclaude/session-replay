@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { COLLAPSE } from './shared.jsx';
+import { COLLAPSE } from './stageUtils.js';
 
 /**
  * Modal overlay for displaying tool details (Agent prompts, Skill docs, etc.)

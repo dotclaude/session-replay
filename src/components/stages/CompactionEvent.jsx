@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 export default function CompactionEvent({ step, isCurrent, isSearchMatch }) {
   const { preTokens, trigger, preCompactDiscoveredTools, timestamp: ts } = step.event;

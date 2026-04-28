@@ -1,13 +1,5 @@
-import { kindColor } from '../../lib/editor/kindColors.js';
+import { kindColor, ALL_KINDS } from '../../lib/editor/kindColors.js';
 import { useTheme } from '../../hooks/useTheme.js';
-
-export const ALL_KINDS = [
-  'session-header', 'human', 'assistant-text',
-  'tool-bash', 'tool-write', 'tool-edit', 'tool-read',
-  'tool-agent', 'tool-web', 'tool-task', 'tool-skill', 'tool-generic',
-  'hook-event', 'agent-progress', 'compaction-event', 'error-event',
-  'turn-summary', 'pr-link', 'local-command', 'local-command-output',
-];
 
 const FILTER_GROUPS = [
   { kind: 'human',            label: 'Human' },

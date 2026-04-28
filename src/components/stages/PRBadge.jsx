@@ -1,4 +1,4 @@
-import { timestamp } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 export default function PRBadge({ step, isCurrent: _isCurrent }) {
   const { prNumber, prUrl, prRepository, timestamp: ts } = step.event;

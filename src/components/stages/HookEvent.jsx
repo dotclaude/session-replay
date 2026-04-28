@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 export default function HookEvent({ step, isCurrent, isSearchMatch }) {
   const { hookEvent, hookName, command, timestamp: ts } = step.event;

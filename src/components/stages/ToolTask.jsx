@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 const STATUS_COLORS = {
   completed: 'var(--green)',
