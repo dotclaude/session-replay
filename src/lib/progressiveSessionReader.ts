@@ -90,6 +90,9 @@ export async function scanProjectsMetadata(
 
           if (sessionCount === 0 && subAgentCount === 0) return;
 
+          const nonAgentSessions = sessions.filter(s => !s.isSubAgent);
+          if (nonAgentSessions.length > 0 && nonAgentSessions.every(s => (s.lineCount ?? 0) <= 1)) return;
+
           projects.push({ id: projectDirName, label, cwd, sessionCount, subAgentCount, firstTs, sessions: sessions as any });
           projectsScanned++;
           sessionsFound += sessionCount;
