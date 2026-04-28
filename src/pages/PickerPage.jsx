@@ -609,6 +609,9 @@ export default function PickerPage() {
                 Projects
               </span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                  {filteredProjects.length}/{projects.length}
+                </span>
                 <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }}>
                   {['tree', 'flat'].map(mode => (
                     <button key={mode} onClick={() => { setProjectView(mode); localStorage.setItem('projectView', mode); }}
@@ -658,9 +661,6 @@ export default function PickerPage() {
                     </button>
                   </div>
                 )}
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                  {filteredProjects.length}/{projects.length}
-                </span>
               </div>
             </div>
             <input
