@@ -10,27 +10,12 @@ function safeJsonParse(text) {
   }
 }
 
-const LINE_TRUNCATE_BYTES = 4_000;
-
-function stripLargeLine(line) {
-  try {
-    let s = line.replace(/"content"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"content":""');
-    s = s.replace(/"text"\s*:\s*"(?:[^"\\]|\\.){200,}"/g, '"text":""');
-    s = s.replace(/"input"\s*:\s*(\{[^{}]{500,}\})/g, '"input":{}');
-    return JSON.parse(s);
-  } catch {
-    return null;
-  }
-}
-
 function readJsonLines(text) {
   const rawLines = text.split('\n').filter(Boolean);
   const parsed = [];
   for (const line of rawLines) {
     try {
-      const obj = line.length <= LINE_TRUNCATE_BYTES
-        ? JSON.parse(line)
-        : stripLargeLine(line);
+      const obj = JSON.parse(line);
       if (obj) parsed.push(obj);
     } catch {
       // skip
