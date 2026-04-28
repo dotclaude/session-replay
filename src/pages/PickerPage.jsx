@@ -313,6 +313,7 @@ export default function PickerPage() {
         busy={busy}
         error={error}
         scanning={scanProgress !== null}
+        scanProgress={scanProgress}
         onConnect={connect}
         onDirectory={connectFromHandle}
         onError={(msg) => { setError(msg); setStatus('needs-connect'); }}

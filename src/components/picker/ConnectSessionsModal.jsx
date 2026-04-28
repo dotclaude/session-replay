@@ -8,6 +8,7 @@ export default function ConnectSessionsModal({
   busy = false,
   error = null,
   scanning = false,
+  scanProgress = null,
   onConnect,
   onDirectory,
   onError,
@@ -175,10 +176,37 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
-        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
-          {scanning ? (
-            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Scanning sessions…</span>
-          ) : (
+        {/* Fixed-height bottom area — scanning block and button overlap via absolute
+            positioning so the container height never changes as content swaps */}
+        <div style={{ position: 'relative', height: '56px', marginTop: '8px' }}>
+          <div style={{
+            position: 'absolute', inset: 0,
+            padding: '12px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
+            visibility: scanning ? 'visible' : 'hidden',
+            pointerEvents: scanning ? 'auto' : 'none',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+              <span>Scanning sessions…</span>
+              <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {scanProgress?.projectsScanned ?? 0} project{(scanProgress?.projectsScanned ?? 0) !== 1 ? 's' : ''} · {scanProgress?.sessionsFound ?? 0} session{(scanProgress?.sessionsFound ?? 0) !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {scanProgress?.currentProject ?? ''}
+            </div>
+          </div>
+
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', justifyContent: 'flex-end', alignItems: 'center',
+            visibility: scanning ? 'hidden' : 'visible',
+            pointerEvents: scanning ? 'none' : 'auto',
+          }}>
             <button
               disabled={busy}
               onClick={onConnect}
@@ -195,7 +223,7 @@ export default function ConnectSessionsModal({
             >
               {supported ? 'Select .claude folder' : 'Import .claude folder'}
             </button>
-          )}
+          </div>
         </div>
       </section>
     </div>
