@@ -211,7 +211,7 @@ export default function WebkitDirectoryFallback({ onCache }) {
         Import .claude folder
       </h3>
 
-      <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-secondary)', marginBottom: '16px' }}>
+      <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-secondary)', marginBottom: '16px', minHeight: '3.2em' }}>
         {loading ? (
           <>Reading {readProgress.done} / {readProgress.total} files…</>
         ) : (
