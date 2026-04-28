@@ -60,6 +60,14 @@ export const KIND_COLORS_LIGHT = {
 
 export const KIND_COLORS = KIND_COLORS_DARK; // For backwards compatibility
 
+export const ALL_KINDS = [
+  'session-header', 'human', 'assistant-text',
+  'tool-bash', 'tool-write', 'tool-edit', 'tool-read',
+  'tool-agent', 'tool-web', 'tool-task', 'tool-skill', 'tool-generic',
+  'hook-event', 'agent-progress', 'compaction-event', 'error-event',
+  'turn-summary', 'pr-link', 'local-command', 'local-command-output',
+];
+
 export function kindColor(kind) {
   const theme = document.documentElement.getAttribute('data-theme') || 'dark';
   const colors = theme === 'light' ? KIND_COLORS_LIGHT : KIND_COLORS_DARK;

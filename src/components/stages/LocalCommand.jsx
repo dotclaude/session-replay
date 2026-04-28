@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 import { getCommandIcon, getCommandLabel } from '../../lib/parser/parseLocalCommands.js';
 
 export default function LocalCommand({ step, isCurrent, isSearchMatch = false }) {

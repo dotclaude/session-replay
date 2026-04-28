@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, CollapsibleText, CollapsibleBlock } from './shared.jsx';
+import { StageCard, CardHeader, CodeBlock, CollapsibleText, CollapsibleBlock } from './shared.jsx';
+import { timestamp, COLLAPSE } from './stageUtils.js';
 
 export default function AgentProgress({ step, isCurrent, isSearchMatch }) {
   const { agentId, prompt, innerMessage, timestamp: ts } = step.event;

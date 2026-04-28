@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { StageCard, CardHeader, timestamp, COLLAPSE } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp, COLLAPSE } from './stageUtils.js';
 import ToolModal from './ToolModal.jsx';
 
 export default function ToolSkill({ step, isCurrent, isSearchMatch = false }) {

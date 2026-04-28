@@ -1,4 +1,4 @@
-import { timestamp } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 export default function AssistantText({ step, isCurrent }) {
   const { text, usage } = step.event;

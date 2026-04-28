@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { StageCard, CardHeader, timestamp, COLLAPSE, CollapsibleText } from './shared.jsx';
+import { StageCard, CardHeader, CollapsibleText } from './shared.jsx';
+import { timestamp, COLLAPSE } from './stageUtils.js';
 import ToolModal from './ToolModal.jsx';
 import { useReplayContext } from '../../lib/ReplayContext.jsx';
 import { useSessionProvider } from '../../lib/SessionProviderContext.jsx';

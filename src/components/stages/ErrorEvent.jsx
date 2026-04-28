@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, timestamp } from './shared.jsx';
+import { StageCard, CardHeader } from './shared.jsx';
+import { timestamp } from './stageUtils.js';
 
 export default function ErrorEvent({ step, isCurrent, isSearchMatch }) {
   const { error, messageId, model, timestamp: ts } = step.event;

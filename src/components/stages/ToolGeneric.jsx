@@ -1,4 +1,5 @@
-import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, CollapsibleBlock } from './shared.jsx';
+import { StageCard, CardHeader, CodeBlock, CollapsibleBlock } from './shared.jsx';
+import { timestamp, COLLAPSE } from './stageUtils.js';
 
 export default function ToolGeneric({ step, isCurrent, isSearchMatch = false }) {
   const { toolName, toolInput, result, timestamp: ts } = step.event;
