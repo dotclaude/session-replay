@@ -119,7 +119,7 @@ function computeStepDurationMs(steps, index, timing) {
 }
 
 export function captureFrames({ previewEl, animatorRef, steps, timing, onProgress }) {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve, _reject) => {
     const exportStart = performance.now();
     const log = (msg) => console.log(`[capture +${(performance.now() - exportStart).toFixed(0)}ms] ${msg}`);
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { StageCard, CardHeader, timestamp, COLLAPSE } from './shared.jsx';
 import ToolModal from './ToolModal.jsx';
 

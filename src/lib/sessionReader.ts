@@ -11,24 +11,9 @@ export interface ReadSessionsOptions {
   previewChars?: number;
 }
 
-const DEFAULT_OPTIONS: Required<ReadSessionsOptions> = {
-  maxDepth: 8,
-  maxFileBytes: 10 * 1024 * 1024, // Larger than scaffolding to handle full sessions
-  includeExtensions: [".json", ".jsonl", ".txt", ".md", ".log"],
-  previewChars: 12_000
-};
-
 export async function readSessionsDirectory(
-  claudeHandle: FileSystemDirectoryHandle,
-  options: ReadSessionsOptions = {}
+  claudeHandle: FileSystemDirectoryHandle
 ): Promise<SessionsCache> {
-  const mergedOptions: Required<ReadSessionsOptions> = {
-    ...DEFAULT_OPTIONS,
-    ...options,
-    includeExtensions:
-      options.includeExtensions ?? DEFAULT_OPTIONS.includeExtensions
-  };
-
   const projects: ProjectCache[] = [];
 
   // Get projects directory

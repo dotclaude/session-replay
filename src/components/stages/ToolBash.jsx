@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, ExpandButton } from './shared.jsx';
 
 export default function ToolBash({ step, isCurrent, isSearchMatch = false }) {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { getHiddenFolderHint } from '../../lib/platformHints';
 import { supportsFileSystemAccess, resolveSessionsDirectory } from '../../lib/fsAccess';
 import DirectoryDropZone from './DirectoryDropZone';
@@ -154,7 +154,7 @@ export default function ConnectSessionsModal({
               Firefox/Safari user?
             </strong>
             <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-              Your browser uses a fallback mode. You'll need to re-select your folder after page refresh, but all features work normally.
+              Your browser uses a fallback mode. You&apos;ll need to re-select your folder after page refresh, but all features work normally.
             </span>
           </div>
         )}

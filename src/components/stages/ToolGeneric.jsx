@@ -1,4 +1,3 @@
-import React from 'react';
 import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, CollapsibleBlock } from './shared.jsx';
 
 export default function ToolGeneric({ step, isCurrent, isSearchMatch = false }) {

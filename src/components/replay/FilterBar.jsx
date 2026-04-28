@@ -1,4 +1,3 @@
-import React from 'react';
 import { kindColor } from '../../lib/editor/kindColors.js';
 import { useTheme } from '../../hooks/useTheme.js';
 
@@ -31,7 +30,7 @@ const FILTER_GROUPS = [
 ];
 
 export default function FilterBar({ activeKinds, onChange, currentTurnOnly, onCurrentTurnOnly }) {
-  const theme = useTheme(); // Force re-render on theme change
+  const _theme = useTheme(); // Force re-render on theme change
   function toggle(kind) {
     const next = new Set(activeKinds);
     if (next.has(kind)) next.delete(kind); else next.add(kind);

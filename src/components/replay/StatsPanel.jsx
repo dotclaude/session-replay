@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { estimateCost } from '../../lib/stats/computeSessionStats.js';
 
 const MODEL_SHORT = (m) => m

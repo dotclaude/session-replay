@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import PickerPage from './pages/PickerPage.jsx';
 import ReplayPage from './pages/ReplayPage.jsx';

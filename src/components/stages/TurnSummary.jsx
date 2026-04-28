@@ -1,7 +1,6 @@
-import React from 'react';
 import { timestamp } from './shared.jsx';
 
-export default function TurnSummary({ step, isCurrent }) {
+export default function TurnSummary({ step, isCurrent: _isCurrent }) {
   return (
     <div style={{
       margin: '12px 16px',

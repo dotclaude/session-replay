@@ -14,7 +14,6 @@ const BG1      = '#161b22';
 const BG2      = '#21262d';
 const BORDER   = '#444c56';
 const TEXT_PRI = '#e6edf3';
-const TEXT_SEC = '#8b949e';
 const TEXT_MUT = '#6e7681';
 const ACCENT   = '#58a6ff';
 const MONO     = "'Cascadia Code', 'Fira Code', 'Consolas', monospace";
@@ -40,20 +39,6 @@ const KIND_META = {
   'session-header':   { accent: '#58a6ff', icon: '◆',  label: 'session' },
 };
 
-const PROCESSING_MESSAGES = {
-  'assistant-text': 'Claude is thinking...',
-  'tool-bash':      'Running command...',
-  'tool-write':     'Writing file...',
-  'tool-edit':      'Editing file...',
-  'tool-read':      'Reading file...',
-  'tool-agent':     'Running agent...',
-  'tool-web':       'Fetching data...',
-  'tool-task':      'Managing tasks...',
-  'tool-generic':   'Using tool...',
-  'human':          'Awaiting user input...',
-  'hook-event':     'Executing hook...',
-  'compaction-event': 'Compacting context...',
-};
 
 function wrapText(ctx, text, maxWidth) {
   const lines = [];
@@ -130,7 +115,6 @@ function extractBodyText(step, revealFraction = 1) {
 
 // Measure how tall a single card will be given its content.
 function measureCardHeight(ctx, step, revealFraction, cardW) {
-  const PAD = 16;
   const BAR_W = 3;
   const HEADER_H = 32;
   const BODY_PAD = 12;

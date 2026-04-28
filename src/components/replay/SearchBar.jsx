@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { searchIndex } from '../../lib/search/buildSearchIndex.js';
 
 export default function SearchBar({ index, onMatches, onJump, onClear }) {
@@ -18,7 +18,7 @@ export default function SearchBar({ index, onMatches, onJump, onClear }) {
       if (results.length > 0) onJump(results[0]);
     }, 150);
     return () => clearTimeout(debounceRef.current);
-  }, [query, index]);
+  }, [query, index, onMatches, onJump]);
 
   function advance(dir) {
     if (!matches.length) return;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSessionProvider } from '../lib/SessionProviderContext.jsx';
 import SessionCard from '../components/picker/SessionCard.jsx';
@@ -105,7 +105,7 @@ export default function PickerPage() {
 
   const firstSessionRef = useRef(null);
 
-  async function refreshFromHandle(handle) {
+  const refreshFromHandle = useCallback(async (handle) => {
     setStatus('refreshing');
     setError(null);
 
@@ -130,9 +130,9 @@ export default function PickerPage() {
       setError(friendlyPickerError(err));
       setStatus('error');
     }
-  }
+  }, [reinitialise]);
 
-  async function boot() {
+  const boot = useCallback(async () => {
     try {
       const existingCache = await loadSessionsCache();
       if (existingCache && existingCache.projects && existingCache.projects.length > 0) {
@@ -164,7 +164,7 @@ export default function PickerPage() {
       setError(friendlyPickerError(err));
       setStatus('needs-connect');
     }
-  }
+  }, [refreshFromHandle]);
 
   async function connect() {
     try {
@@ -255,7 +255,7 @@ export default function PickerPage() {
 
   useEffect(() => {
     boot();
-  }, []);
+  }, [boot]);
 
   useEffect(() => {
     if (!selectedProject) {

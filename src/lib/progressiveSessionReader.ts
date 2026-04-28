@@ -129,28 +129,6 @@ async function scanProjectSessions(
     sessions.push(...results);
   }
 
-  // Scan subdirectories for sub-agents (Format C)
-  // Skip this for progressive loading - sub-agents are loaded on-demand with parent session
-  // Just count them for the subAgentCount field
-  let subAgentCount = 0;
-  for (const [dirName, handle] of entries) {
-    if (handle.kind !== "directory") continue;
-    if (!isUuidDir(dirName)) continue;
-
-    try {
-      const sessionDir = handle as FileSystemDirectoryHandle;
-      const subagentsDir = await sessionDir.getDirectoryHandle("subagents", { create: false });
-
-      // Count agent files
-      for await (const [fileName] of subagentsDir.entries()) {
-        if (fileName.endsWith('.jsonl') && !fileName.includes('.meta.')) {
-          subAgentCount++;
-        }
-      }
-    } catch {
-      // No subagents directory - that's fine
-    }
-  }
 
   sessions.sort((a, b) => (b.firstTs || "").localeCompare(a.firstTs || ""));
 

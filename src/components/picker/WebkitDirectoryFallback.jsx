@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { summariseSession } from '../../lib/claudeReader/summariseSession.ts';
 import { labelFromCwd } from '../../lib/claudeReader/extractCwd.ts';
 
@@ -200,7 +200,7 @@ export default function WebkitDirectoryFallback({ onCache }) {
         {loading ? (
           <>Processing {fileCount} files...</>
         ) : (
-          <>Select your <code style={{ padding: '2px 6px', background: 'var(--bg-2)', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>.claude</code> folder. You'll need to re-import after page refresh or when sessions change.</>
+          <>Select your <code style={{ padding: '2px 6px', background: 'var(--bg-2)', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>.claude</code> folder. You&apos;ll need to re-import after page refresh or when sessions change.</>
         )}
       </p>
 

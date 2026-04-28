@@ -314,15 +314,6 @@ function ClipEditorModal({ steps, clips, onClipsChange, onClose }) {
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
-function StatRow({ label, value }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-      <span style={{ color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>{value}</span>
-    </div>
-  );
-}
-
 function SliderSetting({ label, value, min, max, step, onChange }) {
   return (
     <div>
@@ -582,7 +573,7 @@ function SectionHeader({ step, label, done, active }) {
 }
 
 function ExportProgressModal({
-  phase, format, vidWidth,
+  phase, format, vidWidth: _vidWidth,
   captureProgress, captureFrame, captureTotal, captureStepInfo,
   encodeProgress, encodeStage, encodeWritten, encodeFrameCount,
   encodeEncodedSec, encodeTotalSec, encodeElapsed, lastProgressRef,

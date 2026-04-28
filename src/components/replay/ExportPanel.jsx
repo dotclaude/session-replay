@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import { useState } from 'react';
 
 export default function ExportPanel({ steps, clipIn, clipOut, stageRef, scrubTo, onClose }) {
   const [format, setFormat] = useState('json');
@@ -63,7 +63,7 @@ export default function ExportPanel({ steps, clipIn, clipOut, stageRef, scrubTo,
       }
 
       if (format === 'mp4') {
-        const { createFFmpeg, fetchFile } = await import('@ffmpeg/ffmpeg');
+        const { createFFmpeg } = await import('@ffmpeg/ffmpeg');
         const ffmpeg = createFFmpeg({ log: false });
         setProgress(0.62);
         await ffmpeg.load();

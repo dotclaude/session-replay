@@ -1,10 +1,7 @@
-import React, { useState } from 'react';
-import { StageCard, CardHeader, CodeBlock, timestamp } from './shared.jsx';
+import { StageCard, CardHeader, timestamp } from './shared.jsx';
 
 export default function HookEvent({ step, isCurrent, isSearchMatch }) {
   const { hookEvent, hookName, command, timestamp: ts } = step.event;
-  const [expanded, setExpanded] = useState(false);
-
   return (
     <StageCard accent="var(--yellow)" isCurrent={isCurrent} isSearchMatch={isSearchMatch} style={{ margin: '2px 16px', opacity: isCurrent ? 1 : 0.75 }}>
       <CardHeader icon="⚡" label={`hook · ${hookEvent || ''}`} accent="var(--yellow)" meta={timestamp(ts)} />

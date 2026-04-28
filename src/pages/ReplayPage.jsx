@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { AnimatorControls } from '../lib/stepAnimator/index.js';
 import { useTimedAnimator } from '../lib/stepAnimator/useTimedAnimator.js';

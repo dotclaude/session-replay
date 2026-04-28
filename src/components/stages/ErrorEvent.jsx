@@ -1,4 +1,3 @@
-import React from 'react';
 import { StageCard, CardHeader, timestamp } from './shared.jsx';
 
 export default function ErrorEvent({ step, isCurrent, isSearchMatch }) {

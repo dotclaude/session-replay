@@ -1,7 +1,7 @@
 // Project label extraction (ported from bridge server.js L246-269)
 
 import type { SessionMetadata } from "../sessionsStore";
-import { readJsonLines, readJson } from "./fileUtils";
+import { readJson } from "./fileUtils";
 
 export async function extractCwdFromProject(
   projDirHandle: FileSystemDirectoryHandle,

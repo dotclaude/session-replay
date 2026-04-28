@@ -1,4 +1,3 @@
-import React from 'react';
 import { StageCard, CardHeader, timestamp } from './shared.jsx';
 import { getCommandIcon, getCommandLabel } from '../../lib/parser/parseLocalCommands.js';
 

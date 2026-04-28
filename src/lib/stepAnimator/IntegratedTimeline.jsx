@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { kindColor } from '../editor/kindColors.js';
 import { useTheme } from '../../hooks/useTheme.js';
 
@@ -12,7 +12,7 @@ export default function IntegratedTimeline({
   clipOut,
   currentDescription,
 }) {
-  const theme = useTheme(); // Force re-render on theme change
+  const _theme = useTheme(); // Force re-render on theme change
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);

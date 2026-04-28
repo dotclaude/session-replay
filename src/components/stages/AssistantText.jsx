@@ -1,4 +1,3 @@
-import React from 'react';
 import { timestamp } from './shared.jsx';
 
 export default function AssistantText({ step, isCurrent }) {

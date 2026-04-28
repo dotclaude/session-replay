@@ -1,4 +1,3 @@
-import React from 'react';
 import { StageCard, CardHeader, timestamp } from './shared.jsx';
 
 const STATUS_COLORS = {

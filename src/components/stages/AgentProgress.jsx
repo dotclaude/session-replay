@@ -1,4 +1,3 @@
-import React from 'react';
 import { StageCard, CardHeader, CodeBlock, timestamp, COLLAPSE, CollapsibleText, CollapsibleBlock } from './shared.jsx';
 
 export default function AgentProgress({ step, isCurrent, isSearchMatch }) {

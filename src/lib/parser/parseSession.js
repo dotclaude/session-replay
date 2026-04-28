@@ -119,7 +119,6 @@ export function parseSession(lines) {
 
   // Track turn numbers (user→assistant pairs)
   let currentTurn = 0;
-  let lastWasUser = false;
 
   for (const obj of lines) {
     const { type, timestamp, uuid, parentUuid, isSidechain } = obj;
@@ -133,7 +132,6 @@ export function parseSession(lines) {
 
       if (isActualUserInput) {
         currentTurn++;
-        lastWasUser = true;
       }
     }
 

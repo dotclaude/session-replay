@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 // ─── Collapse / expand thresholds ────────────────────────────────────────────
 // Change these to adjust how much is shown before an expand option appears.
@@ -52,7 +52,7 @@ export function CardHeader({ icon, label, meta, accent = 'var(--text-muted)' }) 
   );
 }
 
-export function CodeBlock({ children, lang }) {
+export function CodeBlock({ children, lang: _lang }) {
   return (
     <pre style={{
       margin: 0,

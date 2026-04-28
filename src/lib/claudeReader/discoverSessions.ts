@@ -2,7 +2,7 @@
 
 import type { SessionMetadata } from "../sessionsStore";
 import { readJsonLines, readJson, isUuidDir } from "./fileUtils";
-import { summariseSession, summariseFromIndex } from "./summariseSession";
+import { summariseSession } from "./summariseSession";
 
 interface SessionDiscoveryResult {
   id: string;

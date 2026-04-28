@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function ProjectCard({ project, selected, onClick }) {
   return (

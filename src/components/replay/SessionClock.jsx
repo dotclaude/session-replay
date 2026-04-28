@@ -1,4 +1,3 @@
-import React from 'react';
 
 function formatElapsed(ms) {
   if (!ms && ms !== 0) return '--:--';

@@ -269,7 +269,7 @@ async function encodeViaWasm({ frames, steps, durations: precomputedDurations, f
   }
 }
 
-export async function encodeGif({ frames, steps, durations, timing, quality, onProgress }) {
+export async function encodeGif({ frames, steps, durations, timing, quality: _quality, onProgress }) {
   return encodeViaWasm({ frames, steps, durations, format: 'gif', timing, width: null, onProgress });
 }
 

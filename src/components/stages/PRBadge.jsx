@@ -1,7 +1,6 @@
-import React from 'react';
 import { timestamp } from './shared.jsx';
 
-export default function PRBadge({ step, isCurrent }) {
+export default function PRBadge({ step, isCurrent: _isCurrent }) {
   const { prNumber, prUrl, prRepository, timestamp: ts } = step.event;
 
   return (

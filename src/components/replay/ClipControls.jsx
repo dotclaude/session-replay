@@ -1,4 +1,3 @@
-import React from 'react';
 
 export default function ClipControls({ currentStep, clipIn, clipOut, onSetIn, onSetOut, onClear, onExport }) {
   const hasClip = clipIn != null && clipOut != null && clipIn <= clipOut;

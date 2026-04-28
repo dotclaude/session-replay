@@ -1,4 +1,3 @@
-import React from 'react';
 import HumanTurn from './HumanTurn.jsx';
 import AssistantText from './AssistantText.jsx';
 import ToolBash from './ToolBash.jsx';
