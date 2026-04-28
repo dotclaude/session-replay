@@ -132,7 +132,7 @@ function countLeafProjects(node) {
   return count;
 }
 
-function renderTreeNode(node, depth, collapsedFolders, toggleFolder, selectedProject, setSelectedProject) {
+function renderTreeNode(node, depth, isFolderExpanded, toggleFolder, selectedProject, setSelectedProject) {
   const items = [];
 
   for (const project of node.projects) {
@@ -148,7 +148,7 @@ function renderTreeNode(node, depth, collapsedFolders, toggleFolder, selectedPro
   }
 
   for (const [seg, childNode] of node.children) {
-    const isExpanded = !collapsedFolders.has(childNode.fullKey);
+    const isExpanded = isFolderExpanded(childNode.fullKey);
     const subtreeCount = countLeafProjects(childNode);
     items.push(
       <div key={childNode.fullKey}>
@@ -159,7 +159,7 @@ function renderTreeNode(node, depth, collapsedFolders, toggleFolder, selectedPro
           onToggle={() => toggleFolder(childNode.fullKey)}
           depth={depth}
         />
-        {isExpanded && renderTreeNode(childNode, depth + 1, collapsedFolders, toggleFolder, selectedProject, setSelectedProject)}
+        {isExpanded && renderTreeNode(childNode, depth + 1, isFolderExpanded, toggleFolder, selectedProject, setSelectedProject)}
       </div>
     );
   }
@@ -189,20 +189,36 @@ export default function PickerPage() {
   const [projectView, setProjectView] = useState(() =>
     localStorage.getItem('projectView') || 'tree'
   );
-  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
+  // foldersExpanded: global default; folderOverrides: keys that deviate from the default
+  const [foldersExpanded, setFoldersExpanded] = useState(false);
+  const [folderOverrides, setFolderOverrides] = useState(() => new Set());
 
   const firstSessionRef = useRef(null);
   const isDraggingRef = useRef(false);
   const dragStartXRef = useRef(0);
   const dragStartWidthRef = useRef(0);
 
+  const isFolderExpanded = useCallback((key) =>
+    foldersExpanded ? !folderOverrides.has(key) : folderOverrides.has(key)
+  , [foldersExpanded, folderOverrides]);
+
   const toggleFolder = useCallback((key) => {
-    setCollapsedFolders(prev => {
+    setFolderOverrides(prev => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
       return next;
     });
+  }, []);
+
+  const collapseAll = useCallback(() => {
+    setFoldersExpanded(false);
+    setFolderOverrides(new Set());
+  }, []);
+
+  const expandAll = useCallback(() => {
+    setFoldersExpanded(true);
+    setFolderOverrides(new Set());
   }, []);
 
   useEffect(() => {
@@ -606,6 +622,28 @@ export default function PickerPage() {
                     </button>
                   ))}
                 </div>
+                {projectView === 'tree' && (
+                  <div style={{ display: 'flex', borderRadius: 4, overflow: 'hidden', border: '1px solid var(--border)' }}>
+                    <button onClick={collapseAll}
+                      style={{
+                        padding: '2px 6px', fontSize: 10, cursor: 'pointer',
+                        background: !foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'var(--bg-3)',
+                        border: 'none', borderRight: '1px solid var(--border)',
+                        color: !foldersExpanded && folderOverrides.size === 0 ? 'white' : 'var(--text-muted)',
+                      }}>
+                      ⊟
+                    </button>
+                    <button onClick={expandAll}
+                      style={{
+                        padding: '2px 6px', fontSize: 10, cursor: 'pointer',
+                        background: foldersExpanded && folderOverrides.size === 0 ? 'var(--accent-dim)' : 'var(--bg-3)',
+                        border: 'none',
+                        color: foldersExpanded && folderOverrides.size === 0 ? 'white' : 'var(--text-muted)',
+                      }}>
+                      ⊞
+                    </button>
+                  </div>
+                )}
                 <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                   {filteredProjects.length}/{projects.length}
                 </span>
@@ -652,17 +690,17 @@ export default function PickerPage() {
                 ))
               : (
                 <>
-                  {renderTreeNode(projectTree, 0, collapsedFolders, toggleFolder, selectedProject, setSelectedProject)}
+                  {renderTreeNode(projectTree, 0, isFolderExpanded, toggleFolder, selectedProject, setSelectedProject)}
                   {filteredProjects.filter(p => !p.cwd).length > 0 && (
                     <div>
                       <FolderRow
                         label="Other"
                         count={filteredProjects.filter(p => !p.cwd).length}
-                        expanded={!collapsedFolders.has('__other__')}
+                        expanded={isFolderExpanded('__other__')}
                         onToggle={() => toggleFolder('__other__')}
                         depth={0}
                       />
-                      {!collapsedFolders.has('__other__') && filteredProjects.filter(p => !p.cwd).map(p => (
+                      {isFolderExpanded('__other__') && filteredProjects.filter(p => !p.cwd).map(p => (
                         <ProjectRow
                           key={p.id}
                           project={p}
