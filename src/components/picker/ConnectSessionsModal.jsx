@@ -69,11 +69,14 @@ export default function ConnectSessionsModal({
         aria-labelledby="connect-sessions-title"
         style={{
           width: 'min(600px, 100%)',
+          minHeight: '480px',
           padding: '24px',
           background: 'var(--bg-1)',
           border: '1px solid var(--border)',
           borderRadius: '12px',
           boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -176,7 +179,7 @@ export default function ConnectSessionsModal({
         )}
 
         {/* Scan progress and button occupy the same space to prevent layout shift */}
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', marginTop: 'auto' }}>
           <div style={{
             visibility: scanProgress ? 'visible' : 'hidden',
             padding: '12px',
