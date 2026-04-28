@@ -137,7 +137,7 @@ async function scanProjectSessions(
 
   // Read all session files concurrently with bounded parallelism
   for (let i = 0; i < sessionFiles.length; i += FILE_CONCURRENCY) {
-    const batch = sessionFiles.slice(i, i + CONCURRENCY);
+    const batch = sessionFiles.slice(i, i + FILE_CONCURRENCY);
     const results = await Promise.all(
       batch.map(async ({ id, handle }) => {
         onFile?.(`${projDirHandle.name}/${id}.jsonl`);
