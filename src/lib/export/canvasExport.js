@@ -1,5 +1,5 @@
 import { buildFramePlan } from './buildFramePlan.js';
-import { renderHistoryToCanvas, makeCanvas } from './renderFrameToCanvas.js';
+import RenderWorker from './frameRenderWorker.js?worker';
 
 // Firefox's H.264 WebCodecs encoder emits uninitialized YUV for the first frame.
 // VP9 (WebM) doesn't have this bug. Detect Firefox and reroute mp4 → webm.
@@ -20,9 +20,6 @@ export async function exportViaCanvas({ steps, clips, timing, renderMode, format
   const W = width ?? 900;
   // Height must be even for H.264/VP9 chroma subsampling
   const H = Math.round(W * 600 / 900 / 2) * 2;
-  // Use a regular HTMLCanvasElement. OffscreenCanvas has async compositing in
-  // Firefox — VideoFrame would snapshot before 2D draws are committed.
-  const canvas = makeCanvas(W, H);
 
   log(`setting up ${effectiveFormat} encoder at ${W}x${H}${effectiveFormat !== format ? ` (Firefox: mp4→webm)` : ''}...`);
   const { muxer, encoder } = await setupEncoder(W, H, effectiveFormat);
@@ -31,40 +28,88 @@ export async function exportViaCanvas({ steps, clips, timing, renderMode, format
   log(`rendering ${plan.length} frames...`);
   const renderStart = performance.now();
 
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  let timestampUs = 0;
+  const WORKER_COUNT = Math.min(navigator.hardwareConcurrency ?? 4, 4);
+  log(`creating ${WORKER_COUNT} render workers...`);
 
-  for (let i = 0; i < plan.length; i++) {
-    const f = plan[i];
-    renderHistoryToCanvas(canvas, f.history, f.processingMsg, f.revealFraction, f.renderMode, f.animT);
+  // Pre-allocate per-frame resolve slots so the drain loop can await any frame by index
+  const frameResolvers = new Array(plan.length);
+  const framePromises = plan.map((_, i) => new Promise((resolve, reject) => {
+    frameResolvers[i] = { resolve, reject };
+  }));
 
-    // Read pixels back synchronously to force the 2D context to flush all
-    // pending draw calls before we snapshot. Both Chrome and Firefox commit
-    // draws synchronously when getImageData is called.
-    const imageData = ctx.getImageData(0, 0, W, H);
+  let workers = [];
+  try {
+    workers = createWorkerPool(WORKER_COUNT, W, H);
 
-    const durationUs = Math.round(f.durationSec * 1_000_000);
-    // Construct VideoFrame from ImageData (raw pixels) instead of canvas —
-    // this bypasses the browser compositing pipeline entirely and guarantees
-    // the frame contains exactly what was drawn.
-    const vf = new VideoFrame(imageData.data, {
-      format: 'RGBA',
-      codedWidth: W,
-      codedHeight: H,
-      timestamp: timestampUs,
-      duration: durationUs,
-    });
-    encoder.encode(vf, { keyFrame: true });
-    vf.close();
-    timestampUs += durationUs;
+    const freeWorkers = [...workers];
+    let nextDispatch = 0;
 
-    // Drain encoder queue — VP9 is slow and will stall if we don't wait
-    while (encoder.encodeQueueSize > 3) {
-      await yieldToMain();
+    function drainDispatch() {
+      while (freeWorkers.length > 0 && nextDispatch < plan.length) {
+        const worker = freeWorkers.pop();
+        const i = nextDispatch++;
+        const f = plan[i];
+        worker.postMessage({
+          type: 'render',
+          frameIndex: i,
+          history: f.history,
+          processingMsg: f.processingMsg,
+          revealFraction: f.revealFraction,
+          renderMode: f.renderMode,
+          animT: f.animT,
+        });
+      }
     }
-    await yieldToMain();
 
-    onProgress?.({ stage: 'rendering', framesDone: i + 1, framesTotal: plan.length, frameType: f.frameType });
+    workers.forEach(worker => {
+      worker.onmessage = ({ data }) => {
+        frameResolvers[data.frameIndex].resolve(data.pixels);
+        freeWorkers.push(worker);
+        drainDispatch();
+      };
+      worker.onerror = (err) => {
+        // Reject all pending frames so the drain loop throws
+        for (let i = nextDispatch; i < plan.length; i++) {
+          frameResolvers[i]?.reject(new Error(`Render worker error: ${err.message}`));
+        }
+      };
+    });
+
+    // Fill all workers with initial work
+    drainDispatch();
+
+    // Sequential drain + encode — ordering guaranteed by awaiting per-index promises
+    let timestampUs = 0;
+    for (let i = 0; i < plan.length; i++) {
+      const pixels = await framePromises[i];
+      const imageData = new ImageData(pixels, W, H);
+      const f = plan[i];
+      const durationUs = Math.round(f.durationSec * 1_000_000);
+
+      // Construct VideoFrame from raw pixels rather than from the OffscreenCanvas —
+      // this bypasses the browser compositing pipeline entirely and guarantees the
+      // frame contains exactly what was drawn (avoids the Firefox async-compositing bug).
+      const vf = new VideoFrame(new Uint8Array(imageData.data.buffer), {
+        format: 'RGBA',
+        codedWidth: W,
+        codedHeight: H,
+        timestamp: timestampUs,
+        duration: durationUs,
+      });
+      encoder.encode(vf, { keyFrame: true });
+      vf.close();
+      timestampUs += durationUs;
+
+      // Drain encoder queue — VP9 is slow and will stall if we don't wait
+      while (encoder.encodeQueueSize > 3) {
+        await yieldToMain();
+      }
+      await yieldToMain();
+
+      onProgress?.({ stage: 'rendering', framesDone: i + 1, framesTotal: plan.length, frameType: f.frameType });
+    }
+  } finally {
+    terminateWorkerPool(workers);
   }
 
   log(`rendered in ${(performance.now() - renderStart).toFixed(0)}ms`);
@@ -81,6 +126,20 @@ export async function exportViaCanvas({ steps, clips, timing, renderMode, format
 
   const mime = effectiveFormat === 'webm' ? 'video/webm' : 'video/mp4';
   return { blob: new Blob([buffer], { type: mime }), format: effectiveFormat };
+}
+
+function createWorkerPool(count, W, H) {
+  const workers = [];
+  for (let i = 0; i < count; i++) {
+    const worker = new RenderWorker();
+    worker.postMessage({ type: 'init', W, H });
+    workers.push(worker);
+  }
+  return workers;
+}
+
+function terminateWorkerPool(workers) {
+  workers.forEach(w => w.terminate());
 }
 
 async function setupEncoder(W, H, format) {
