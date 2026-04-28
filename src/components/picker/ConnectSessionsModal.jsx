@@ -7,7 +7,7 @@ export default function ConnectSessionsModal({
   open,
   busy = false,
   error = null,
-  scanProgress = null,
+  scanning = false,
   onConnect,
   onDirectory,
   onError,
@@ -69,14 +69,11 @@ export default function ConnectSessionsModal({
         aria-labelledby="connect-sessions-title"
         style={{
           width: 'min(600px, 100%)',
-          minHeight: '480px',
           padding: '24px',
           background: 'var(--bg-1)',
           border: '1px solid var(--border)',
           borderRadius: '12px',
           boxShadow: '0 24px 48px rgba(0,0,0,0.4)',
-          display: 'flex',
-          flexDirection: 'column',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -178,38 +175,10 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
-        {/* Scan progress and button occupy the same space to prevent layout shift */}
-        <div style={{ position: 'relative', marginTop: 'auto' }}>
-          <div style={{
-            visibility: scanProgress ? 'visible' : 'hidden',
-            padding: '12px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            fontSize: '13px',
-            color: 'var(--text-secondary)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span>Scanning sessions…</span>
-              <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {scanProgress?.projectsScanned ?? 0} project{(scanProgress?.projectsScanned ?? 0) !== 1 ? 's' : ''} · {scanProgress?.sessionsFound ?? 0} session{(scanProgress?.sessionsFound ?? 0) !== 1 ? 's' : ''}
-              </span>
-            </div>
-            <div style={{
-              fontSize: '11px', color: 'var(--text-muted)',
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              minHeight: '1em',
-            }}>
-              {scanProgress?.currentProject ?? ''}
-            </div>
-          </div>
-
-          <div style={{
-            position: 'absolute', inset: 0,
-            display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end',
-            visibility: scanProgress ? 'hidden' : 'visible',
-            pointerEvents: scanProgress ? 'none' : 'auto',
-          }}>
+        <div style={{ marginTop: 'auto', display: 'flex', justifyContent: 'flex-end' }}>
+          {scanning ? (
+            <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>Scanning sessions…</span>
+          ) : (
             <button
               disabled={busy}
               onClick={onConnect}
@@ -224,9 +193,9 @@ export default function ConnectSessionsModal({
                 color: busy ? 'var(--text-muted)' : 'white',
               }}
             >
-              {busy ? 'Loading...' : (supported ? 'Select .claude folder' : 'Import .claude folder')}
+              {supported ? 'Select .claude folder' : 'Import .claude folder'}
             </button>
-          </div>
+          )}
         </div>
       </section>
     </div>

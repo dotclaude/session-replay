@@ -312,7 +312,7 @@ export default function PickerPage() {
         open={(status === 'needs-connect' || status === 'refreshing') && supportsFileSystemAccess() && projects.length === 0}
         busy={busy}
         error={error}
-        scanProgress={scanProgress}
+        scanning={scanProgress !== null}
         onConnect={connect}
         onDirectory={connectFromHandle}
         onError={(msg) => { setError(msg); setStatus('needs-connect'); }}
