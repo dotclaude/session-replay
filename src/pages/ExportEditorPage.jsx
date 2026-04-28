@@ -193,7 +193,6 @@ function ClipEditorModal({ steps, clips, onClipsChange, onClose }) {
   const total = steps.length;
 
   const update = (id, patch) => setLocal(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  const add = () => setLocal(prev => [...prev, { id: newClipId(), in: 0, out: total - 1 }]);
   const remove = (id) => setLocal(prev => prev.filter(c => c.id !== id));
   const reset = () => setLocal([{ id: newClipId(), in: 0, out: total - 1 }]);
 
@@ -294,10 +293,6 @@ function ClipEditorModal({ steps, clips, onClipsChange, onClose }) {
 
         {/* Footer */}
         <div style={{ display: 'flex', gap: 8, padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-2)', flexShrink: 0 }}>
-          <button onClick={add}
-            style={{ padding: '7px 14px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 12 }}>
-            + Add clip
-          </button>
           <button onClick={reset}
             style={{ padding: '7px 14px', background: 'var(--bg-3)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12 }}>
             Full session

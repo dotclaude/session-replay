@@ -280,7 +280,7 @@ function drawProcessingIndicator(ctx, message, x, y, cardW, animT = 0) {
  */
 
 function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
-  const PAD_X = 16;
+  const PAD_X = 24;
   const GAP = 6;
   const cardW = W - PAD_X * 2;
   const currentFraction = Math.min(animT / 200, 1);
@@ -313,7 +313,7 @@ function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFract
 
 function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Only the current step, expanded — body lines uncapped, card fills available height.
-  const PAD_X = 16;
+  const PAD_X = 24;
   const cardW = W - PAD_X * 2;
   const current = history[history.length - 1];
   if (!current) return;
@@ -404,7 +404,7 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
 
 function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Current step large at bottom; up to 2 prior steps shown above, dimmed and compact.
-  const PAD_X = 16;
+  const PAD_X = 24;
   const GAP = 8;
   const cardW = W - PAD_X * 2;
   const indicatorH = processingMessage ? 44 + GAP : 0;

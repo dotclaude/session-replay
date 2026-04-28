@@ -2,8 +2,8 @@
 
 A standalone React app that reads your `~/.claude` session history and replays
 any conversation as a beautiful, scrubbable animation. Pick a project, pick a
-session, hit Play. Export clips as GIF, MP4, or WebM. Compose multi-clip
-timelines in the export editor before exporting.
+session, hit Play. Export clips as GIF, MP4, or WebM. Trim the clip range
+in the export editor before exporting.
 
 **Runs entirely in your browser** — no server required. Deployable to GitHub Pages.
 
@@ -59,10 +59,11 @@ Open http://localhost:5174. On first launch, you'll be prompted to select your `
         │
         ▼
   src/lib/export/
-    buildFramePlan.js           maps clip range → frame timestamps
-    captureFrames.js            html2canvas screen capture per frame
+    buildFramePlan.js           maps clip range → frame timestamps with timing/animation fields
+    canvasExport.js             MP4/WebM orchestration: buildFramePlan → renderFrameToCanvas loop → VideoEncoder (WebCodecs) → mp4-muxer/webm-muxer
     renderFrameToCanvas.js      direct 2D canvas rendering (~2ms/frame, no html2canvas)
-    encodeVideo.js              WASM ffmpeg encoding (MP4/WebM/GIF)
+    captureFrames.js            html2canvas screen capture per frame (GIF path only)
+    encodeVideo.js              gif.js GIF encoding + WASM ffmpeg fallback
         │
         ▼
   src/lib/editor/
@@ -130,9 +131,13 @@ that makes tree traversal complex. Instead, `parseSession.js` indexes all
 `tool_result` blocks by `tool_use_id` in a single pass, then pairs them with
 their `tool_use` block during the assistant-message pass. O(n) total.
 
-### Why WASM ffmpeg instead of a bridge endpoint?
+### Why WebCodecs instead of WASM ffmpeg for MP4/WebM?
 
-Video export uses `@ffmpeg/ffmpeg` (WebAssembly) to encode MP4/WebM/GIF entirely in the browser. This removes any server dependency. The WASM build is slower than system ffmpeg (~5-10x) but works offline and requires no installation.
+MP4 and WebM export now use the browser-native **WebCodecs API** (`VideoEncoder`) with `mp4-muxer`/`webm-muxer`. The canvas renderer draws each frame directly (no DOM capture), and the encoder runs on the main thread without any WASM. This dropped export time from ~60 minutes to ~2 seconds for a 600-step session.
+
+GIF export still uses `html2canvas` for frame capture and `gif.js` for encoding, since `VideoEncoder` doesn't produce animated GIFs. COOP/COEP headers are still required (for `gif.js` SharedArrayBuffer), but WebCodecs itself needs no special headers.
+
+WebCodecs requires Chrome 94+ or Firefox 130+. Browsers without `VideoEncoder` show an error and fall back to suggesting GIF.
 
 ---
 
@@ -177,16 +182,17 @@ session-replay/
 │   │   │   └── computeSessionStats.js
 │   │   ├── export/
 │   │   │   ├── buildFramePlan.js
-│   │   │   ├── captureFrames.js
+│   │   │   ├── canvasExport.js       (MP4/WebM — WebCodecs)
+│   │   │   ├── captureFrames.js      (GIF — html2canvas)
 │   │   │   ├── renderFrameToCanvas.js
-│   │   │   └── encodeVideo.js        (WASM ffmpeg)
+│   │   │   └── encodeVideo.js        (GIF — gif.js)
 │   │   └── editor/
 │   │       └── kindColors.js
 │   ├── pages/
 │   │   ├── PickerPage.jsx        Project → session selector
 │   │   ├── ReplayPage.jsx        Session replay with scrubber and export controls
 │   │   ├── AgentReplayPage.jsx   Sub-agent session replay
-│   │   ├── ExportEditorPage.jsx  Multi-clip export editor
+│   │   ├── ExportEditorPage.jsx  Clip range export editor
 │   │   └── AgentExportPage.jsx   Sub-agent export editor
 │   └── components/
 │       ├── picker/
@@ -360,7 +366,7 @@ This app is **client-only** and cannot access your filesystem without explicit p
 - Directory handle is stored in **IndexedDB** (local to your browser)
 - Permission can be **revoked** anytime via browser site settings
 - **No data leaves your machine** — no analytics, no telemetry, no uploads
-- WASM ffmpeg runs entirely in your browser (offline after first load)
+- MP4/WebM export uses the browser-native WebCodecs API — no WASM, no CDN dependency
 
 ---
 
@@ -379,19 +385,24 @@ This app is **client-only** and cannot access your filesystem without explicit p
 - Click "Refresh" on the picker page to re-scan your `.claude` directory
 - If sessions are still missing, check that the JSONL files exist on disk
 
-### Video export is slow
-- WASM ffmpeg is 5-10x slower than system ffmpeg
-- Consider reducing frame count or resolution
-- GIF export is fastest (no video codec overhead)
+### Video export is slow (GIF)
+- GIF export uses `html2canvas` + `gif.js` and is the slowest path
+- Consider exporting as MP4 or WebM instead — these use the native WebCodecs API and are typically ~2 seconds for a full session
+- Reducing frame count (shorter clip or lower FPS) also helps GIF speed
 
 ### "SharedArrayBuffer is not defined"
-- WASM ffmpeg requires COOP/COEP headers (configured in `vite.config.js`)
-- If deploying to a host other than GitHub Pages, ensure these headers are set:
+- GIF export uses `gif.js` which requires COOP/COEP headers (configured in `vite.config.js`)
+- MP4/WebM export via WebCodecs does **not** require these headers
+- If deploying to a host other than GitHub Pages and GIF export is broken, ensure these headers are set:
 
-```
+```http
 Cross-Origin-Opener-Policy: same-origin
 Cross-Origin-Embedder-Policy: require-corp
 ```
+
+### "WebCodecs (VideoEncoder) is not available in this browser"
+- MP4/WebM export requires Chrome 94+, Edge 94+, or Firefox 130+
+- Use GIF export as a fallback on unsupported browsers
 
 ---
 
