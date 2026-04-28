@@ -12,7 +12,6 @@ in the export editor before exporting.
 ## Quick start
 
 ```bash
-cd ~/projects/session-replay
 yarn install
 yarn dev
 ```
@@ -304,10 +303,8 @@ full parsed event. Use `isCurrent` for a highlight glow on the active step and
 
 ## Extending the step animator
 
-`useStepAnimator` lives in `src/lib/stepAnimator/useStepAnimator.js`. It is
-a copy of the canonical version in `~/projects/axon/animation-toolkit/`. If
-you improve the engine here, mirror the changes there (or make this package
-consume the toolkit as a dependency).
+`useStepAnimator` lives in `src/lib/stepAnimator/useStepAnimator.js` — a
+generic step engine (play/pause/scrub/loop) with no app-specific dependencies.
 
 `useTimedAnimator` is a local extension that drives playback against wall-clock
 time — used by `ExportEditorPage` to advance steps at a fixed FPS during frame
@@ -417,4 +414,6 @@ Cross-Origin-Embedder-Policy: require-corp
 
 ## License
 
-See LICENSE file for details.
+[Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0)](LICENSE)
+
+Free to fork, modify, and redistribute. Commercial use is not permitted.
