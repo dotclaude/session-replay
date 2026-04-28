@@ -189,15 +189,34 @@ export default function ConnectSessionsModal({
             color: 'var(--text-secondary)',
             visibility: scanning ? 'visible' : 'hidden',
             pointerEvents: scanning ? 'auto' : 'none',
+            overflow: 'hidden',
           }}>
+            {/* Sweep animation — runs purely via CSS, no JS ticks */}
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '2px', overflow: 'hidden' }}>
+              <div style={{
+                position: 'absolute', height: '100%', width: '40%',
+                background: 'linear-gradient(90deg, transparent, var(--accent), transparent)',
+                animation: 'scan-sweep 1.6s ease-in-out infinite',
+              }} />
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span>Scanning sessions…</span>
+              <span>
+                {scanProgress?.phase === 'enumerating'
+                  ? `Finding projects… (${scanProgress.projectsFound ?? 0} found)`
+                  : scanProgress?.projectsFound
+                  ? `Scanning ${scanProgress.projectsFound} projects…`
+                  : 'Scanning sessions…'}
+              </span>
               <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
                 {scanProgress?.projectsScanned ?? 0} project{(scanProgress?.projectsScanned ?? 0) !== 1 ? 's' : ''} · {scanProgress?.sessionsFound ?? 0} session{(scanProgress?.sessionsFound ?? 0) !== 1 ? 's' : ''}
               </span>
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {scanProgress?.currentProject ?? ''}
+              {scanProgress?.phase === 'enumerating'
+                ? 'Discovering project directories…'
+                : scanProgress?.currentProject
+                ? `↳ ${scanProgress.currentProject}`
+                : ''}
             </div>
           </div>
 

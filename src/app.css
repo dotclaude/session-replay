@@ -247,3 +247,8 @@
 .tag.purple { background: rgba(188, 140, 255, 0.15); color: var(--purple); }
 .tag.orange { background: rgba(255, 166, 87, 0.15); color: var(--orange); }
 .tag.red    { background: rgba(248, 81, 73, 0.15);  color: var(--red); }
+
+@keyframes scan-sweep {
+  0%   { left: -40%; }
+  100% { left: 140%; }
+}

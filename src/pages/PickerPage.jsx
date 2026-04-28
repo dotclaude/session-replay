@@ -110,8 +110,19 @@ export default function PickerPage() {
     setError(null);
 
     try {
-      setScanProgress({ projectsScanned: 0, sessionsFound: 0, currentProject: null });
-      const projects = await scanProjectsMetadata(handle, setScanProgress);
+      setScanProgress({ projectsScanned: 0, sessionsFound: 0, currentProject: null, phase: 'enumerating' });
+
+      const PROGRESS_THROTTLE_MS = 80;
+      let lastProgressTs = 0;
+      const throttledProgress = (p) => {
+        const now = Date.now();
+        if (now - lastProgressTs >= PROGRESS_THROTTLE_MS) {
+          lastProgressTs = now;
+          setScanProgress(p);
+        }
+      };
+
+      const projects = await scanProjectsMetadata(handle, throttledProgress);
 
       const nextCache = {
         generatedAt: new Date().toISOString(),

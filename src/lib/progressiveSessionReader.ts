@@ -2,6 +2,7 @@
 
 import { readJsonLines, readJson, isUuidDir } from './claudeReader/fileUtils';
 import { summariseSession } from './claudeReader/summariseSession';
+import { labelFromCwd } from './claudeReader/extractCwd';
 import type { SessionMetadata, ProjectCache } from './sessionsStore';
 
 interface LightweightSessionMetadata extends Omit<SessionMetadata, 'lines'> {
@@ -16,6 +17,8 @@ export interface ScanProgress {
   projectsScanned: number;
   sessionsFound: number;
   currentProject: string | null;
+  phase?: 'enumerating' | 'scanning';
+  projectsFound?: number;
 }
 
 export async function scanProjectsMetadata(
@@ -29,41 +32,51 @@ export async function scanProjectsMetadata(
 
   const projectsHandle = await claudeHandle.getDirectoryHandle("projects", { create: false });
 
-  // Collect all project directory handles first
+  // Enumerate project directories — emit progress every 10 entries so the UI shows activity
   const projectEntries: [string, FileSystemDirectoryHandle][] = [];
+  const ENUM_REPORT_EVERY = 10;
   for await (const [name, handle] of projectsHandle.entries()) {
     if (handle.kind === "directory") {
       projectEntries.push([name, handle as FileSystemDirectoryHandle]);
+      if (projectEntries.length % ENUM_REPORT_EVERY === 0) {
+        onProgress?.({ projectsScanned: 0, sessionsFound: 0, currentProject: null, phase: 'enumerating', projectsFound: projectEntries.length });
+      }
     }
   }
 
   const enumMs = performance.now() - t0;
   console.log(`[scan] enumerated ${projectEntries.length} projects in ${enumMs.toFixed(0)}ms`);
-  onProgress?.({ projectsScanned, sessionsFound, currentProject: `Found ${projectEntries.length} projects, scanning…` });
+  // Transition to scanning phase — total is now known
+  onProgress?.({ projectsScanned: 0, sessionsFound: 0, currentProject: null, phase: 'scanning', projectsFound: projectEntries.length });
 
-  // Scan projects concurrently in batches — report progress per project as each completes
-  for (let i = 0; i < projectEntries.length; i += CONCURRENCY) {
-    const batch = projectEntries.slice(i, i + CONCURRENCY);
+  // Scan projects concurrently — each project resolves its label early and fires
+  // per-file progress so the counter and filepath update as fast as work completes
+  for (let i = 0; i < projectEntries.length; i += PROJECT_CONCURRENCY) {
+    const batch = projectEntries.slice(i, i + PROJECT_CONCURRENCY);
 
     await Promise.all(
       batch.map(async ([projectDirName, projectHandle]) => {
         const pt0 = performance.now();
-        onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
         try {
-          const sessions = await scanProjectSessions(projectHandle, (path) => {
-            onProgress?.({ projectsScanned, sessionsFound, currentProject: path });
-          });
-
+          // Resolve human-readable label before scanning files so progress shows real names
           let cwd: string | null = null;
+          let indexData: any = null;
           try {
             const indexHandle = await projectHandle.getFileHandle("sessions-index.json", { create: false });
-            const index = await readJson(indexHandle as FileSystemFileHandle);
-            cwd = index?.originalPath || index?.entries?.[0]?.projectPath || null;
-          } catch {
-            cwd = sessions.find(s => s.cwd)?.cwd || null;
-          }
+            indexData = await readJson(indexHandle as FileSystemFileHandle);
+            cwd = indexData?.originalPath || indexData?.entries?.[0]?.projectPath || null;
+          } catch { /* no index */ }
 
-          const label = cwd ? cwd.split('/').pop() || cwd : projectDirName.replace(/^-/, '').replace(/-/g, '/');
+          const earlyLabel = labelFromCwd(cwd, projectDirName);
+          onProgress?.({ projectsScanned, sessionsFound, currentProject: earlyLabel, phase: 'scanning', projectsFound: projectEntries.length });
+
+          const sessions = await scanProjectSessions(projectHandle, () => {
+            onProgress?.({ projectsScanned, sessionsFound, currentProject: earlyLabel, phase: 'scanning', projectsFound: projectEntries.length });
+          });
+
+          // Use cwd from sessions if index didn't have it
+          if (!cwd) cwd = sessions.find(s => s.cwd)?.cwd || null;
+          const label = labelFromCwd(cwd, projectDirName);
 
           let firstTs: string | null = null;
           for (const s of sessions) {
@@ -80,7 +93,7 @@ export async function scanProjectsMetadata(
           projects.push({ id: projectDirName, label, cwd, sessionCount, subAgentCount, firstTs, sessions: sessions as any });
           projectsScanned++;
           sessionsFound += sessionCount;
-          onProgress?.({ projectsScanned, sessionsFound, currentProject: projectDirName });
+          onProgress?.({ projectsScanned, sessionsFound, currentProject: label, phase: 'scanning', projectsFound: projectEntries.length });
         } catch (err) {
           console.warn(`[scan] skipping ${projectDirName}:`, err);
         }
@@ -98,7 +111,8 @@ export async function scanProjectsMetadata(
 /**
  * Scan a single project's sessions - only read first/last lines for metadata
  */
-const CONCURRENCY = 8;
+const PROJECT_CONCURRENCY = 16; // outer loop — cheap dir handle + small index read
+const FILE_CONCURRENCY = 6;     // inner loop — full file.text() on potentially large JSONLs
 
 async function scanProjectSessions(
   projDirHandle: FileSystemDirectoryHandle,
@@ -122,7 +136,7 @@ async function scanProjectSessions(
   }
 
   // Read all session files concurrently with bounded parallelism
-  for (let i = 0; i < sessionFiles.length; i += CONCURRENCY) {
+  for (let i = 0; i < sessionFiles.length; i += FILE_CONCURRENCY) {
     const batch = sessionFiles.slice(i, i + CONCURRENCY);
     const results = await Promise.all(
       batch.map(async ({ id, handle }) => {
