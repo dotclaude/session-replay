@@ -982,7 +982,6 @@ export function ExportShell({ steps: initialSteps, sessionId, backTo, filePrefix
             if (p.stage === 'planning') {
               setCaptureTotal(p.framesTotal ?? 0);
             } else if (p.stage === 'rendering') {
-              setCaptureTotal(p.framesTotal ?? 0);
               setCaptureFrame(p.framesDone ?? 0);
               setCaptureProgress((p.framesDone ?? 0) / Math.max(p.framesTotal ?? 1, 1));
               if (p.frameType) setCaptureStepInfo({ frameType: p.frameType });

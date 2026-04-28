@@ -265,6 +265,7 @@ function drawProcessingIndicator(ctx, message, x, y, cardW, animT = 0) {
 
 function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   const PAD_X = 24;
+  const PAD_Y = 24;
   const GAP = 6;
   const cardW = W - PAD_X * 2;
   const currentFraction = Math.min(animT / 200, 1);
@@ -276,8 +277,8 @@ function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFract
   const indicatorH = processingMessage ? 36 + GAP : 0;
   const totalH = heights.reduce((a, b) => a + b, 0) + GAP * history.length + indicatorH;
 
-  const scrollY = Math.min(0, H - totalH - PAD_X);
-  let y = PAD_X + scrollY;
+  const scrollY = Math.min(0, H - totalH - PAD_Y);
+  let y = PAD_Y + scrollY;
 
   for (let i = 0; i < history.length; i++) {
     const step = history[i];
@@ -298,6 +299,7 @@ function renderScrollMode(ctx, W, H, history, processingMessage, lastRevealFract
 function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Only the current step, expanded — body lines uncapped, card fills available height.
   const PAD_X = 24;
+  const PAD_Y = 24;
   const cardW = W - PAD_X * 2;
   const current = history[history.length - 1];
   if (!current) return;
@@ -313,7 +315,7 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
   const textW = cardW - BAR_W - BODY_PAD * 2;
   const lines = bodyText ? wrapText(ctx, bodyText, textW) : [];
   const indicatorH = processingMessage ? 44 : 0;
-  const availH = H - PAD_X * 2 - indicatorH;
+  const availH = H - PAD_Y * 2 - indicatorH;
   const maxLines = Math.max(1, Math.floor((availH - HEADER_H - BODY_PAD * 2) / lineH));
 
   // Draw full-height card
@@ -322,7 +324,7 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
 
   ctx.fillStyle = BG1;
   ctx.beginPath();
-  ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
+  ctx.roundRect(PAD_X, PAD_Y, cardW, cardH, 6);
   ctx.fill();
 
   const currentFraction = Math.min(animT / 200, 1);
@@ -330,34 +332,34 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
   ctx.strokeStyle = meta.accent + hexAlpha;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.roundRect(PAD_X, PAD_X, cardW, cardH, 6);
+  ctx.roundRect(PAD_X, PAD_Y, cardW, cardH, 6);
   ctx.stroke();
 
   ctx.fillStyle = meta.accent;
   ctx.beginPath();
-  ctx.roundRect(PAD_X, PAD_X, BAR_W, cardH, [6, 0, 0, 6]);
+  ctx.roundRect(PAD_X, PAD_Y, BAR_W, cardH, [6, 0, 0, 6]);
   ctx.fill();
 
   ctx.fillStyle = BG2;
   ctx.beginPath();
-  ctx.roundRect(PAD_X, PAD_X, cardW, HEADER_H, [6, 6, 0, 0]);
+  ctx.roundRect(PAD_X, PAD_Y, cardW, HEADER_H, [6, 6, 0, 0]);
   ctx.fill();
 
   ctx.strokeStyle = BORDER;
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(PAD_X, PAD_X + HEADER_H);
-  ctx.lineTo(PAD_X + cardW, PAD_X + HEADER_H);
+  ctx.moveTo(PAD_X, PAD_Y + HEADER_H);
+  ctx.lineTo(PAD_X + cardW, PAD_Y + HEADER_H);
   ctx.stroke();
 
   ctx.font = `bold 14px ${SANS}`;
   ctx.fillStyle = meta.accent;
-  ctx.fillText(meta.icon, PAD_X + BAR_W + 12, PAD_X + HEADER_H / 2 + 5);
+  ctx.fillText(meta.icon, PAD_X + BAR_W + 12, PAD_Y + HEADER_H / 2 + 5);
 
   ctx.font = `bold 12px ${SANS}`;
   const iconW = ctx.measureText(meta.icon).width;
   ctx.fillStyle = meta.accent;
-  ctx.fillText(meta.label.toUpperCase(), PAD_X + BAR_W + 12 + iconW + 8, PAD_X + HEADER_H / 2 + 5);
+  ctx.fillText(meta.label.toUpperCase(), PAD_X + BAR_W + 12 + iconW + 8, PAD_Y + HEADER_H / 2 + 5);
 
   const ts = current.event?.timestamp || current.timestamp;
   if (ts) {
@@ -365,30 +367,31 @@ function renderStreamMode(ctx, W, H, history, processingMessage, lastRevealFract
     ctx.font = `10px ${MONO}`;
     ctx.fillStyle = TEXT_MUT;
     const tsW = ctx.measureText(tsStr).width;
-    ctx.fillText(tsStr, PAD_X + cardW - 12 - tsW, PAD_X + HEADER_H / 2 + 5);
+    ctx.fillText(tsStr, PAD_X + cardW - 12 - tsW, PAD_Y + HEADER_H / 2 + 5);
   }
 
   if (lines.length > 0) {
     ctx.font = isCode ? `12px ${MONO}` : `13px ${SANS}`;
     ctx.fillStyle = current.kind === 'error-event' ? '#f85149' : TEXT_PRI;
     lines.slice(0, maxLines).forEach((line, i) => {
-      ctx.fillText(line, PAD_X + BAR_W + BODY_PAD, PAD_X + HEADER_H + BODY_PAD + (i + 1) * lineH);
+      ctx.fillText(line, PAD_X + BAR_W + BODY_PAD, PAD_Y + HEADER_H + BODY_PAD + (i + 1) * lineH);
     });
     if (lines.length > maxLines) {
       ctx.font = `11px ${SANS}`;
       ctx.fillStyle = TEXT_MUT;
-      ctx.fillText(`… +${lines.length - maxLines} more lines`, PAD_X + BAR_W + BODY_PAD, PAD_X + HEADER_H + BODY_PAD + (maxLines + 1) * lineH);
+      ctx.fillText(`… +${lines.length - maxLines} more lines`, PAD_X + BAR_W + BODY_PAD, PAD_Y + HEADER_H + BODY_PAD + (maxLines + 1) * lineH);
     }
   }
 
   if (processingMessage) {
-    drawProcessingIndicator(ctx, processingMessage, PAD_X, PAD_X + cardH + 6, cardW, animT);
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, PAD_Y + cardH + 6, cardW, animT);
   }
 }
 
 function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFraction, animT = 0) {
   // Current step large at bottom; up to 2 prior steps shown above, dimmed and compact.
   const PAD_X = 24;
+  const PAD_Y = 24;
   const GAP = 8;
   const cardW = W - PAD_X * 2;
   const indicatorH = processingMessage ? 44 + GAP : 0;
@@ -404,8 +407,8 @@ function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFrac
   const priorSteps = history.slice(history.length - 1 - priorCount, history.length - 1);
 
   // Total space available above current
-  const bottomY = H - PAD_X - indicatorH - currentH - GAP;
-  let y = PAD_X;
+  const bottomY = H - PAD_Y - indicatorH - currentH - GAP;
+  let y = PAD_Y;
 
   // Distribute prior steps in the space above
   if (priorSteps.length > 0) {
@@ -423,12 +426,12 @@ function renderFocusedMode(ctx, W, H, history, processingMessage, lastRevealFrac
   }
 
   // Current step at bottom
-  const currentY = H - PAD_X - indicatorH - currentH;
+  const currentY = H - PAD_Y - indicatorH - currentH;
   const currentFraction = Math.min(animT / 200, 1);
   drawCard(ctx, current, lastRevealFraction, PAD_X, currentY, cardW, true, currentFraction);
 
   if (processingMessage) {
-    drawProcessingIndicator(ctx, processingMessage, PAD_X, H - PAD_X - indicatorH + GAP, cardW, animT);
+    drawProcessingIndicator(ctx, processingMessage, PAD_X, H - PAD_Y - indicatorH + GAP, cardW, animT);
   }
 }
 
