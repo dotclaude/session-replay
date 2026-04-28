@@ -469,5 +469,6 @@ export function makeCanvas(width = 900, height = 600) {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
+  canvas.getContext('2d', { willReadFrequently: true });
   return canvas;
 }

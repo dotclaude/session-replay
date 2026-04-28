@@ -31,7 +31,7 @@ export async function exportViaCanvas({ steps, clips, timing, renderMode, format
   log(`rendering ${plan.length} frames...`);
   const renderStart = performance.now();
 
-  const ctx = canvas.getContext('2d');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   let timestampUs = 0;
 
   for (let i = 0; i < plan.length; i++) {
