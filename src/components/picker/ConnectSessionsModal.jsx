@@ -159,33 +159,6 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
-        {scanProgress && (
-          <div style={{
-            padding: '12px',
-            background: 'var(--bg-2)',
-            border: '1px solid var(--border)',
-            borderRadius: '8px',
-            marginBottom: '12px',
-            fontSize: '13px',
-            color: 'var(--text-secondary)',
-          }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-              <span>Scanning sessions…</span>
-              <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
-                {scanProgress.projectsScanned} project{scanProgress.projectsScanned !== 1 ? 's' : ''} · {scanProgress.sessionsFound} session{scanProgress.sessionsFound !== 1 ? 's' : ''}
-              </span>
-            </div>
-            {scanProgress.currentProject && (
-              <div style={{
-                fontSize: '11px', color: 'var(--text-muted)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-              }}>
-                {scanProgress.currentProject}
-              </div>
-            )}
-          </div>
-        )}
-
         {error && (
           <div
             style={{
@@ -202,8 +175,38 @@ export default function ConnectSessionsModal({
           </div>
         )}
 
-        {!scanProgress && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {/* Scan progress and button occupy the same space to prevent layout shift */}
+        <div style={{ position: 'relative' }}>
+          <div style={{
+            visibility: scanProgress ? 'visible' : 'hidden',
+            padding: '12px',
+            background: 'var(--bg-2)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            fontSize: '13px',
+            color: 'var(--text-secondary)',
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+              <span>Scanning sessions…</span>
+              <span style={{ color: 'var(--text-primary)', fontVariantNumeric: 'tabular-nums' }}>
+                {scanProgress?.projectsScanned ?? 0} project{(scanProgress?.projectsScanned ?? 0) !== 1 ? 's' : ''} · {scanProgress?.sessionsFound ?? 0} session{(scanProgress?.sessionsFound ?? 0) !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div style={{
+              fontSize: '11px', color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              minHeight: '1em',
+            }}>
+              {scanProgress?.currentProject ?? ''}
+            </div>
+          </div>
+
+          <div style={{
+            position: 'absolute', inset: 0,
+            display: 'flex', justifyContent: 'flex-end', alignItems: 'flex-end',
+            visibility: scanProgress ? 'hidden' : 'visible',
+            pointerEvents: scanProgress ? 'none' : 'auto',
+          }}>
             <button
               disabled={busy}
               onClick={onConnect}
@@ -221,7 +224,7 @@ export default function ConnectSessionsModal({
               {busy ? 'Loading...' : (supported ? 'Select .claude folder' : 'Import .claude folder')}
             </button>
           </div>
-        )}
+        </div>
       </section>
     </div>
   );

@@ -25,77 +25,89 @@ function readJsonLines(text) {
 
 export default function WebkitDirectoryFallback({ onCache }) {
   const [loading, setLoading] = useState(false);
-  const [fileCount, setFileCount] = useState(0);
+  const [readProgress, setReadProgress] = useState({ done: 0, total: 0 });
 
   async function onChange(event) {
     setLoading(true);
-    setFileCount(0);
+    setReadProgress({ done: 0, total: 0 });
+    const t0 = performance.now();
 
     const files = Array.from(event.currentTarget.files ?? []);
+    const CONCURRENCY = 8;
 
-    // Group files by project
-    const projectMap = new Map();
-
+    // Classify files without reading them — pure path/name inspection
+    const toRead = [];
     for (const file of files) {
-      setFileCount(prev => prev + 1);
-
       const path = file.webkitRelativePath || file.name;
-
-      // Extract project ID from path: .claude/projects/<project-id>/...
       const match = path.match(/\.claude\/projects\/([^/]+)\//);
       if (!match) continue;
 
       const projectId = match[1];
       const fileName = file.name.toLowerCase();
 
-      if (!projectMap.has(projectId)) {
-        projectMap.set(projectId, { id: projectId, sessionFiles: [], subAgentFiles: [], indexFile: null });
-      }
-
-      const project = projectMap.get(projectId);
-
-      // Handle sessions-index.json
       if (fileName === 'sessions-index.json') {
-        const text = await file.text();
-        project.indexFile = safeJsonParse(text);
+        toRead.push({ file, path, projectId, kind: 'index' });
         continue;
       }
 
-      // Handle JSONL session files
       if (fileName.endsWith('.jsonl')) {
         const isInSubagentsDir = path.includes('/subagents/') || path.includes('\\subagents\\');
-
         if (isInSubagentsDir) {
-          // Sub-agent file: extract parentSessionUuid and agentId
-          // Path pattern: .../<parentSessionUuid>/subagents/agent-<agentId>.jsonl
           const subagentMatch = path.match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})[\\/]subagents[\\/]agent-([^/\\]+)\.jsonl$/i);
           if (subagentMatch) {
-            const parentSessionId = subagentMatch[1];
-            const agentId = subagentMatch[2];
-            const text = await file.text();
-            const lines = readJsonLines(text);
-            if (lines.length > 0) {
-              project.subAgentFiles.push({ parentSessionId, agentId, lines });
-            }
+            toRead.push({ file, path, projectId, kind: 'subagent', parentSessionId: subagentMatch[1], agentId: subagentMatch[2] });
           }
           continue;
         }
 
         const sessionId = file.name.replace('.jsonl', '');
-
-        // Only process main session files (UUID format at project root)
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(sessionId);
-        if (!isUuid) continue;
+        if (isUuid) {
+          toRead.push({ file, path, projectId, kind: 'session', sessionId });
+        }
+      }
+    }
 
-        const text = await file.text();
+    setReadProgress({ done: 0, total: toRead.length });
+    console.log(`[import] ${toRead.length} files to read (${files.length} total in selection)`);
+
+    // Group files by project
+    const projectMap = new Map();
+    const ensureProject = (projectId) => {
+      if (!projectMap.has(projectId)) {
+        projectMap.set(projectId, { id: projectId, sessionFiles: [], subAgentFiles: [], indexFile: null });
+      }
+      return projectMap.get(projectId);
+    };
+
+    // Read all files concurrently in batches
+    let doneCount = 0;
+    const results = [];
+    for (let i = 0; i < toRead.length; i += CONCURRENCY) {
+      const batch = toRead.slice(i, i + CONCURRENCY);
+      const batchResults = await Promise.all(batch.map(async (entry) => {
+        const text = await entry.file.text();
+        return { ...entry, text };
+      }));
+      doneCount += batchResults.length;
+      setReadProgress({ done: doneCount, total: toRead.length });
+      results.push(...batchResults);
+    }
+
+    for (const { text, projectId, kind, path, sessionId, parentSessionId, agentId } of results) {
+      const project = ensureProject(projectId);
+
+      if (kind === 'index') {
+        project.indexFile = safeJsonParse(text);
+      } else if (kind === 'subagent') {
         const lines = readJsonLines(text);
-
         if (lines.length > 0) {
-          project.sessionFiles.push({
-            id: sessionId,
-            path,
-            lines,
-          });
+          project.subAgentFiles.push({ parentSessionId, agentId, lines });
+        }
+      } else if (kind === 'session') {
+        const lines = readJsonLines(text);
+        if (lines.length > 0) {
+          project.sessionFiles.push({ id: sessionId, path, lines });
         }
       }
     }
@@ -172,6 +184,7 @@ export default function WebkitDirectoryFallback({ onCache }) {
     // Sort by most recent
     projects.sort((a, b) => (b.firstTs || '').localeCompare(a.firstTs || ''));
 
+    console.log(`[import] done in ${((performance.now() - t0) / 1000).toFixed(2)}s — ${projects.length} projects, ${projects.reduce((n, p) => n + p.sessionCount, 0)} sessions`);
     setLoading(false);
 
     onCache({
@@ -198,7 +211,7 @@ export default function WebkitDirectoryFallback({ onCache }) {
 
       <p style={{ fontSize: '13px', lineHeight: '1.6', color: 'var(--text-secondary)', marginBottom: '16px' }}>
         {loading ? (
-          <>Processing {fileCount} files...</>
+          <>Reading {readProgress.done} / {readProgress.total} files…</>
         ) : (
           <>Select your <code style={{ padding: '2px 6px', background: 'var(--bg-2)', borderRadius: '4px', fontFamily: 'var(--font-mono)' }}>.claude</code> folder. You&apos;ll need to re-import after page refresh or when sessions change.</>
         )}
